@@ -1,0 +1,12 @@
+[Unit]
+Description=flowbit OS Storage Setup
+After=local-fs.target
+Before=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/kit-automount.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

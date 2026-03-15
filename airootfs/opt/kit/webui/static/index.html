@@ -1,0 +1,1769 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>flowbit OS</title>
+<style>
+:root {
+  --bg-primary: #0a0e17;
+  --bg-secondary: #111827;
+  --bg-card: #1a2236;
+  --bg-card-hover: #1f2a42;
+  --bg-input: #0d1321;
+  --border: #2a3a5c;
+  --accent: #3b82f6;
+  --accent-glow: rgba(59, 130, 246, 0.3);
+  --accent2: #10b981;
+  --accent3: #f59e0b;
+  --danger: #ef4444;
+  --text: #e2e8f0;
+  --text-dim: #64748b;
+  --text-bright: #f8fafc;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --radius: 12px;
+  --radius-sm: 8px;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.header {
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+  border-bottom: 1px solid var(--border);
+  padding: 16px 24px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 100;
+}
+.logo { display: flex; align-items: center; gap: 14px; }
+.logo-icon {
+  width: 44px; height: 44px;
+  background: linear-gradient(135deg, var(--accent), #6366f1);
+  border-radius: var(--radius); display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 900; color: white;
+  box-shadow: 0 4px 15px var(--accent-glow);
+}
+.logo-text h1 { font-size: 20px; font-weight: 700; color: var(--text-bright); }
+.logo-text span { font-size: 12px; color: var(--text-dim); }
+.header-info { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.header-badge {
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 20px; padding: 5px 12px; font-size: 12px; color: var(--text-dim);
+}
+.header-badge strong { color: var(--text); }
+
+.nav {
+  background: var(--bg-secondary); border-bottom: 1px solid var(--border);
+  padding: 0 24px; display: flex; gap: 2px; overflow-x: auto;
+}
+.nav-btn {
+  background: none; border: none; color: var(--text-dim);
+  padding: 12px 16px; font-size: 13px; font-weight: 500; cursor: pointer;
+  border-bottom: 2px solid transparent; transition: all 0.2s;
+  white-space: nowrap; display: flex; align-items: center; gap: 6px;
+}
+.nav-btn:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+.nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.main { padding: 20px 24px; max-width: 1440px; margin: 0 auto; }
+
+.card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+}
+.card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.card-title { font-size: 15px; font-weight: 600; color: var(--text-bright); display: flex; align-items: center; gap: 8px; }
+
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+@media (max-width: 1024px) { .grid-2,.grid-3,.grid-4 { grid-template-columns: 1fr; } }
+
+.stat-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px; transition: all 0.3s;
+}
+.stat-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+.stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+.stat-value { font-size: 22px; font-weight: 700; color: var(--text-bright); }
+.stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+
+.btn {
+  background: linear-gradient(135deg, var(--accent), #2563eb);
+  color: white; border: none; border-radius: var(--radius-sm);
+  padding: 9px 18px; font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px var(--accent-glow); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-success { background: linear-gradient(135deg, var(--accent2), #059669); }
+.btn-warning { background: linear-gradient(135deg, var(--accent3), #d97706); }
+.btn-danger { background: linear-gradient(135deg, var(--danger), #dc2626); }
+.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+.btn-outline:hover { border-color: var(--accent); color: var(--accent); box-shadow: none; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 10px 14px; background: var(--bg-input); color: var(--text-dim); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+td { padding: 10px 14px; border-bottom: 1px solid rgba(42,58,92,0.5); }
+tr:hover td { background: rgba(255,255,255,0.02); }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
+.badge-success { background: rgba(34,197,94,0.15); color: var(--success); }
+.badge-danger { background: rgba(239,68,68,0.15); color: var(--danger); }
+.badge-warning { background: rgba(245,158,11,0.15); color: var(--warning); }
+.badge-info { background: rgba(59,130,246,0.15); color: var(--accent); }
+
+.input-group { display: flex; gap: 8px; margin-bottom: 10px; }
+input[type="text"], input[type="number"], select {
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 9px 14px; font-size: 13px;
+  color: var(--text); flex: 1; outline: none; transition: border-color 0.2s;
+}
+input:focus, select:focus { border-color: var(--accent); }
+
+.terminal {
+  background: #000; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 14px; font-family: 'JetBrains Mono','Fira Code',monospace;
+  font-size: 12px; line-height: 1.5; color: #a0f0a0;
+  max-height: 350px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+}
+
+.page { display: none; }
+.page.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.progress-wrap { margin: 10px 0; }
+.progress-bar { height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; transition: width 0.5s ease; width: 0%; }
+.progress-text { font-size: 12px; color: var(--text-dim); margin-top: 4px; display: flex; justify-content: space-between; }
+
+.module-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px; cursor: pointer;
+  transition: all 0.3s; display: flex; flex-direction: column; gap: 10px;
+}
+.module-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+.module-icon { width: 44px; height: 44px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.module-card h3 { font-size: 15px; font-weight: 600; color: var(--text-bright); }
+.module-card p { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
+
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+.section-title { font-size: 13px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.info-grid { display: grid; grid-template-columns: 160px 1fr; gap: 6px 14px; font-size: 13px; }
+.info-label { color: var(--text-dim); }
+.info-value { color: var(--text-bright); font-weight: 500; word-break: break-all; }
+
+.confirm-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.7); z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+}
+.confirm-box {
+  background: var(--bg-card); border: 1px solid var(--danger);
+  border-radius: var(--radius); padding: 28px; max-width: 480px; width: 90%;
+}
+.confirm-box h3 { color: var(--danger); margin-bottom: 12px; font-size: 18px; }
+.confirm-box p { color: var(--text); margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
+.confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+
+.task-status { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 8px 0; }
+.task-running { color: var(--accent); }
+.task-done { color: var(--success); }
+.task-error { color: var(--danger); }
+
+body.light {
+  --bg-primary: #f0f2f5;
+  --bg-secondary: #ffffff;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f8f9fa;
+  --bg-input: #f0f2f5;
+  --border: #d1d5db;
+  --accent: #2563eb;
+  --accent-glow: rgba(37, 99, 235, 0.2);
+  --text: #1f2937;
+  --text-dim: #6b7280;
+  --text-bright: #111827;
+}
+body.light .terminal { background: #f8f9fa; color: #1f2937; }
+body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
+
+.toast-container {
+  position: fixed; top: 20px; right: 20px; z-index: 300;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  padding: 12px 20px; border-radius: var(--radius-sm);
+  font-size: 13px; color: white; min-width: 280px; max-width: 400px;
+  animation: slideIn 0.3s ease; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+  display: flex; align-items: center; gap: 8px;
+}
+.toast-success { background: var(--success); }
+.toast-error { background: var(--danger); }
+.toast-info { background: var(--accent); }
+.toast-warning { background: var(--warning); }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+@media (max-width: 768px) {
+  .header { flex-direction: column; gap: 10px; padding: 12px 16px; }
+  .header-info { justify-content: center; }
+  .nav { padding: 0 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .nav-btn { padding: 10px 12px; font-size: 12px; }
+  .main { padding: 12px 12px; }
+  .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr !important; }
+  .card { padding: 14px; }
+  .info-grid { grid-template-columns: 120px 1fr; }
+  .input-group { flex-wrap: wrap; }
+  .stat-value { font-size: 18px; }
+  .module-card { padding: 14px; }
+  .confirm-box { margin: 16px; }
+  .terminal { font-size: 11px; max-height: 250px; }
+  table { font-size: 12px; display: block; overflow-x: auto; }
+  th, td { padding: 6px 8px; }
+}
+@media (max-width: 480px) {
+  .logo-text h1 { font-size: 16px; }
+  .header-badge { font-size: 10px; padding: 3px 8px; }
+  .btn { padding: 7px 12px; font-size: 12px; }
+  .nav-btn { padding: 8px 10px; font-size: 11px; }
+}
+
+@media print {
+  .header, .nav, .btn, .confirm-overlay { display: none !important; }
+  .page { display: block !important; }
+  body { background: white; color: black; }
+  .card { border: 1px solid #ccc; break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <div class="logo-icon">fb</div>
+    <div class="logo-text"><h1>flowbit OS</h1><span>IT Toolkit</span></div>
+  </div>
+  <div class="header-info">
+    <div class="header-badge"><strong id="h-hostname">...</strong></div>
+    <div class="header-badge"><strong id="h-model">...</strong></div>
+    <div class="header-badge"><strong id="h-serial">...</strong></div>
+    <div class="header-badge" id="h-time"></div>
+    <button class="btn btn-sm btn-outline" onclick="toggleLang()" id="lang-btn">EN</button>
+    <button class="btn btn-sm btn-outline" onclick="toggleTheme()" id="theme-btn" title="Theme">&#127769;</button>
+    <button class="btn btn-sm btn-outline" onclick="exportScreenshot()">Export</button>
+  </div>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" data-page="dashboard">Dashboard</button>
+  <button class="nav-btn" data-page="sysinfo">System Info</button>
+  <button class="nav-btn" data-page="wiper">Wiper</button>
+  <button class="nav-btn" data-page="network">Netzwerk</button>
+  <button class="nav-btn" data-page="disks">Datentraeger</button>
+  <button class="nav-btn" data-page="hwtest">Hardware Test</button>
+  <button class="nav-btn" data-page="bios">BIOS Tools</button>
+  <button class="nav-btn" data-page="backup">Backup/Restore</button>
+  <button class="nav-btn" data-page="wifi">WiFi</button>
+  <button class="nav-btn" data-page="explorer">Datei-Explorer</button>
+  <button class="nav-btn" data-page="passreset">Passwort-Reset</button>
+  <button class="nav-btn" data-page="eventlog">Event-Log</button>
+  <button class="nav-btn" data-page="ssh">SSH</button>
+  <button class="nav-btn" data-page="sessionlog">Log</button>
+</div>
+
+<div class="main">
+
+  <!-- DASHBOARD -->
+  <div class="page active" id="page-dashboard">
+    <div class="grid-4" id="stats-row">
+      <div class="stat-card" id="spark-cpu"><div class="stat-label">CPU</div><div class="stat-value" id="s-cpu">...</div><div class="stat-sub" id="s-cpu-sub"></div></div>
+      <div class="stat-card" id="spark-ram"><div class="stat-label">RAM</div><div class="stat-value" id="s-ram">...</div><div class="stat-sub" id="s-ram-sub"></div></div>
+      <div class="stat-card"><div class="stat-label">Datentraeger</div><div class="stat-value" id="s-disks">...</div><div class="stat-sub" id="s-disks-sub"></div></div>
+      <div class="stat-card"><div class="stat-label">Netzwerk</div><div class="stat-value" id="s-net">...</div><div class="stat-sub" id="s-net-sub"></div></div>
+    </div>
+    <div class="section-title" style="margin-top:24px">Module</div>
+    <div class="grid-3">
+      <div class="module-card" onclick="showPage('sysinfo')">
+        <div class="module-icon" style="background:rgba(59,130,246,0.15);color:var(--accent)">&#9783;</div>
+        <h3>System Info</h3><p>Hardware-Inventar, Intune Export, Windows Key</p>
+      </div>
+      <div class="module-card" onclick="showPage('wiper')">
+        <div class="module-icon" style="background:rgba(239,68,68,0.15);color:var(--danger)">&#9249;</div>
+        <h3>Wiper</h3><p>Sichere Datenloeschung, SSD Secure Erase, RAM Scrub</p>
+      </div>
+      <div class="module-card" onclick="showPage('network')">
+        <div class="module-icon" style="background:rgba(16,185,129,0.15);color:var(--accent2)">&#9672;</div>
+        <h3>Netzwerk</h3><p>Ping, DNS, Traceroute, Speedtest, Port-Check</p>
+      </div>
+      <div class="module-card" onclick="showPage('hwtest')">
+        <div class="module-icon" style="background:rgba(168,85,247,0.15);color:#a855f7">&#9889;</div>
+        <h3>Hardware Test</h3><p>RAM, CPU Stresstest, Disk Performance</p>
+      </div>
+      <div class="module-card" onclick="showPage('bios')">
+        <div class="module-icon" style="background:rgba(245,158,11,0.15);color:var(--accent3)">&#9881;</div>
+        <h3>BIOS Tools</h3><p>BIOS Settings, Profile, Win11 Check</p>
+      </div>
+      <div class="module-card" onclick="showPage('backup')">
+        <div class="module-icon" style="background:rgba(34,197,94,0.15);color:var(--success)">&#8693;</div>
+        <h3>Backup / Restore</h3><p>Disk-Images, Clone, Restore mit Checksumme</p>
+      </div>
+      <div class="module-card" onclick="showPage('wifi')">
+        <div class="module-icon" style="background:rgba(59,130,246,0.15);color:var(--accent)">&#128246;</div>
+        <h3>WiFi Manager</h3><p>WLAN scannen, verbinden, verwalten</p>
+      </div>
+      <div class="module-card" onclick="showPage('explorer')">
+        <div class="module-icon" style="background:rgba(168,85,247,0.15);color:#a855f7">&#128194;</div>
+        <h3>Datei-Explorer</h3><p>Partitionen mounten, Dateien durchsuchen, retten</p>
+      </div>
+      <div class="module-card" onclick="showPage('passreset')">
+        <div class="module-icon" style="background:rgba(245,158,11,0.15);color:var(--accent3)">&#128273;</div>
+        <h3>Passwort-Reset</h3><p>Windows-Passwoerter offline zuruecksetzen</p>
+      </div>
+      <div class="module-card" onclick="showPage('eventlog')">
+        <div class="module-icon" style="background:rgba(239,68,68,0.15);color:var(--danger)">&#128203;</div>
+        <h3>Event-Log</h3><p>Windows Event-Logs auslesen</p>
+      </div>
+      <div class="module-card" onclick="showPage('ssh')">
+        <div class="module-icon" style="background:rgba(34,197,94,0.15);color:var(--success)">&#128187;</div>
+        <h3>SSH Client</h3><p>Remote-Befehle auf anderen Geraeten</p>
+      </div>
+      <div class="module-card" onclick="showPage('sessionlog')">
+        <div class="module-icon" style="background:rgba(59,130,246,0.15);color:var(--accent)">&#128220;</div>
+        <h3>Session-Log</h3><p>Aktionen und Ereignisse dieser Sitzung</p>
+      </div>
+    </div>
+    <div class="section-title" style="margin-top:24px">Handy-Zugriff</div>
+    <div class="card" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+      <img id="qr-img" src="/api/qrcode" alt="QR Code" style="width:180px;height:180px;border-radius:8px;background:white;padding:8px;image-rendering:pixelated">
+      <div>
+        <h3 style="color:var(--text-bright);margin-bottom:8px">Web-UI auf dem Handy oeffnen</h3>
+        <p style="color:var(--text-dim);font-size:14px;font-family:monospace" id="qr-url">Lade...</p>
+        <p style="color:var(--text-dim);font-size:12px;margin-top:6px">QR-Code scannen oder URL eingeben — Handy muss im gleichen Netzwerk sein</p>
+        <button class="btn btn-sm btn-outline" style="margin-top:8px" onclick="navigator.clipboard.writeText(document.getElementById('qr-url').textContent)">URL kopieren</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SYSTEM INFO -->
+  <div class="page" id="page-sysinfo">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">System Info</div>
+        <div class="actions" style="margin:0">
+          <button class="btn btn-sm" onclick="exportSysinfo()">Export TXT</button>
+          <button class="btn btn-sm btn-success" onclick="exportIntune()">Intune CSV</button>
+          <button class="btn btn-sm btn-warning" onclick="exportAutopilot()">Autopilot Hash</button>
+          <button class="btn btn-sm btn-warning" onclick="loadWinKeys()">Windows Keys</button>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div>
+          <div class="section-title">Geraet</div>
+          <div class="info-grid" id="info-device"></div>
+          <div class="section-title">BIOS / Firmware</div>
+          <div class="info-grid" id="info-bios"></div>
+        </div>
+        <div>
+          <div class="section-title">Prozessor & RAM</div>
+          <div class="info-grid" id="info-cpu"></div>
+          <div class="section-title">Sicherheit</div>
+          <div class="info-grid" id="info-security"></div>
+        </div>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Datentraeger</div>
+        <table id="tbl-disks-info" style="margin-top:10px"></table>
+      </div>
+      <div class="card">
+        <div class="card-title">Netzwerk</div>
+        <table id="tbl-net-info" style="margin-top:10px"></table>
+      </div>
+    </div>
+    <div class="card" id="ram-slots-card" style="display:none">
+      <div class="card-title">RAM Slots</div>
+      <table id="tbl-ram-slots" style="margin-top:10px"></table>
+    </div>
+    <div class="card" id="battery-card" style="display:none">
+      <div class="card-header">
+        <div class="card-title">Batterie-Report</div>
+        <button class="btn btn-sm btn-outline" onclick="loadBattery()">Aktualisieren</button>
+      </div>
+      <div id="battery-info"></div>
+    </div>
+    <div class="card" id="monitor-card" style="display:none">
+      <div class="card-title">Monitore / Displays</div>
+      <table id="tbl-monitors" style="margin-top:10px">
+        <thead><tr><th>Name</th><th>Hersteller</th><th>Aufloesung</th><th>Anschluss</th><th>Seriennummer</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card" id="winkeys-card" style="display:none">
+      <div class="card-title">Windows Product Keys</div>
+      <div id="winkeys-info" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <!-- WIPER -->
+  <div class="page" id="page-wiper">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title" style="color:var(--danger)">Wiper — Sichere Datenloeschung</div>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">ACHTUNG: Alle Daten auf dem gewaehlten Datentraeger werden unwiderruflich geloescht!</p>
+
+      <div class="section-title">Disk Wipe</div>
+      <div class="input-group">
+        <select id="wipe-disk"></select>
+        <select id="wipe-method">
+          <option value="zero">Nullen (schnell)</option>
+          <option value="random">Zufallsdaten (sicher)</option>
+        </select>
+        <select id="wipe-passes">
+          <option value="1">1 Durchgang</option>
+          <option value="3">3 Durchgaenge (DoD)</option>
+          <option value="7">7 Durchgaenge (Gutmann-light)</option>
+        </select>
+        <button class="btn btn-danger" onclick="startWipe()">Wipe starten</button>
+      </div>
+      <div id="wipe-task"></div>
+
+      <div class="section-title">SSD Secure Erase</div>
+      <div class="input-group">
+        <select id="erase-disk"></select>
+        <button class="btn btn-danger" onclick="startSecureErase()">Secure Erase</button>
+      </div>
+      <div id="erase-task"></div>
+
+      <div class="section-title">RAM Scrub</div>
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:8px">Fuellt verfuegbaren RAM mit Zufallsdaten und loescht ihn.</p>
+      <button class="btn btn-warning" onclick="startRamScrub()">RAM Scrub starten</button>
+      <div id="ramscrub-task"></div>
+    </div>
+  </div>
+
+  <!-- NETWORK -->
+  <div class="page" id="page-network">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Ping</div>
+        <div class="input-group" style="margin-top:10px">
+          <input type="text" id="ping-target" placeholder="IP oder Hostname" value="google.com">
+          <button class="btn btn-sm" onclick="doPing()">Ping</button>
+        </div>
+        <div class="terminal" id="ping-out" style="min-height:100px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">DNS Lookup</div>
+        <div class="input-group" style="margin-top:10px">
+          <input type="text" id="dns-target" placeholder="Hostname" value="microsoft.com">
+          <button class="btn btn-sm" onclick="doDns()">Lookup</button>
+        </div>
+        <div class="terminal" id="dns-out" style="min-height:100px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Traceroute</div>
+        <div class="input-group" style="margin-top:10px">
+          <input type="text" id="trace-target" placeholder="Hostname" value="google.com">
+          <button class="btn btn-sm" onclick="doTrace()">Traceroute</button>
+        </div>
+        <div id="trace-task"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Port Check</div>
+        <div class="input-group" style="margin-top:10px">
+          <input type="text" id="port-target" placeholder="IP/Hostname" value="">
+          <input type="text" id="port-num" placeholder="Port" value="443" style="max-width:80px">
+          <button class="btn btn-sm" onclick="doPortCheck()">Check</button>
+        </div>
+        <div class="terminal" id="port-out" style="min-height:60px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Speedtest</div>
+        <div class="actions" style="margin-top:10px">
+          <button class="btn btn-sm" onclick="doSpeed('1')">1 MB</button>
+          <button class="btn btn-sm" onclick="doSpeed('10')">10 MB</button>
+          <button class="btn btn-sm btn-warning" onclick="doSpeed('100')">100 MB</button>
+        </div>
+        <div class="terminal" id="speed-out" style="min-height:60px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Volle Diagnose</div>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Fuehrt alle Netzwerktests durch und erstellt Bericht.</p>
+        <button class="btn btn-sm btn-success" onclick="doNetDiag()">Diagnose starten</button>
+        <div id="netdiag-task"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Wake-on-LAN</div>
+        <div class="input-group" style="margin-top:10px">
+          <input type="text" id="wol-mac" placeholder="MAC-Adresse (AA:BB:CC:DD:EE:FF)">
+          <button class="btn btn-sm btn-success" onclick="sendWol()">Wake Up</button>
+        </div>
+        <div id="wol-result" style="font-size:13px;margin-top:8px;color:var(--text-dim)"></div>
+        <div class="section-title" style="margin-top:12px">Zuletzt geweckt</div>
+        <div id="wol-history" style="font-size:12px;color:var(--text-dim)"></div>
+      </div>
+      <div class="card" style="grid-column:span 2">
+        <div class="card-header">
+          <div class="card-title">Netzwerk-Scanner</div>
+          <div class="actions" style="margin:0">
+            <input type="text" id="scan-subnet" placeholder="z.B. 192.168.1.0/24" style="max-width:200px">
+            <button class="btn btn-sm" onclick="startNetScan()">Scannen</button>
+          </div>
+        </div>
+        <div id="netscan-task"></div>
+        <table id="tbl-netscan" style="display:none">
+          <thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Aktion</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- DISKS / SMART -->
+  <div class="page" id="page-disks">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Datentraeger & SMART</div>
+        <button class="btn btn-sm btn-outline" onclick="loadSysinfo()">Aktualisieren</button>
+      </div>
+      <table id="tbl-disks-detail">
+        <thead><tr><th>Device</th><th>Typ</th><th>Groesse</th><th>Modell</th><th>SN</th><th>SMART</th><th>Aktion</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="card" id="smart-dashboard">
+      <div class="card-header">
+        <div class="card-title">Disk-Gesundheit</div>
+        <button class="btn btn-sm btn-outline" onclick="loadSmartDashboard()">Aktualisieren</button>
+      </div>
+      <div class="grid-3" id="smart-cards"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Bitlocker-Status</div>
+      <div class="input-group" style="margin-top:10px">
+        <select id="bitlocker-partition"></select>
+        <button class="btn btn-sm" onclick="checkBitlocker()">Pruefen</button>
+      </div>
+      <div id="bitlocker-result" style="margin-top:10px;font-size:13px"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">SMART Details</div>
+      <div class="terminal" id="smart-out" style="min-height:200px;margin-top:10px">Disk auswaehlen...</div>
+    </div>
+  </div>
+
+  <!-- HARDWARE TEST -->
+  <div class="page" id="page-hwtest">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">RAM Test</div>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Schreibt/liest RAM, prueft Integritaet mit Checksummen und Patterns.</p>
+        <div class="actions">
+          <button class="btn btn-sm" onclick="startRamTest(256,2)">Schnell (256 MB)</button>
+          <button class="btn btn-sm btn-warning" onclick="startRamTest(512,3)">Mittel (512 MB)</button>
+          <button class="btn btn-sm btn-danger" onclick="startRamTest(1024,4)">Ausfuehrlich (1 GB)</button>
+        </div>
+        <div id="ramtest-task"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">CPU Stresstest</div>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Belastet alle Kerne, ueberwacht Temperatur (Auto-Stopp bei >95 C).</p>
+        <div class="actions">
+          <button class="btn btn-sm" onclick="startCpuTest(30)">30 Sek</button>
+          <button class="btn btn-sm btn-warning" onclick="startCpuTest(120)">2 Min</button>
+          <button class="btn btn-sm btn-danger" onclick="startCpuTest(300)">5 Min</button>
+        </div>
+        <div id="cputest-task"></div>
+      </div>
+      <div class="card" style="grid-column: span 2">
+        <div class="card-title">Disk Lesetest</div>
+        <div class="input-group" style="margin-top:10px">
+          <select id="disktest-device"></select>
+          <button class="btn btn-sm" onclick="startDiskTest()">Test starten</button>
+        </div>
+        <div id="disktest-task"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BIOS TOOLS -->
+  <div class="page" id="page-bios">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">BIOS Firmware</div>
+        <div class="info-grid" id="info-bios-detail" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Sicherheit & Win11</div>
+        <div id="bios-security" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">BIOS Settings</div>
+        <div class="actions" style="margin:0">
+          <button class="btn btn-sm" onclick="loadBiosSettings()">Laden</button>
+          <button class="btn btn-sm btn-success" onclick="exportBiosTxt()">Export TXT</button>
+        </div>
+      </div>
+      <div id="bios-settings-status" style="color:var(--text-dim);font-size:13px;margin-bottom:10px"></div>
+      <div class="table-wrap"><table id="tbl-bios-settings">
+        <thead><tr><th>Setting</th><th>Aktueller Wert</th><th>Standard</th><th>Optionen</th></tr></thead>
+        <tbody></tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">BIOS Profile</div>
+        <div class="actions" style="margin:0">
+          <input type="text" id="profile-name" placeholder="Profilname eingeben" style="max-width:200px;flex:none">
+          <button class="btn btn-sm btn-success" onclick="saveBiosProfile()">Profil speichern</button>
+        </div>
+      </div>
+      <div id="bios-profiles-list"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Boot-Geraete</div>
+      <div id="boot-devices" style="margin-top:10px">Lade...</div>
+    </div>
+    <div class="card">
+      <div class="card-title">PXE Network Boot</div>
+      <div style="margin-top:10px;font-size:13px;color:var(--text-dim)">
+        <p>PXE Boot ermoeglicht das Booten von flowbit OS ueber das Netzwerk ohne USB-Stick.</p>
+        <div id="pxe-info" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BACKUP / RESTORE -->
+  <div class="page" id="page-backup">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Disk Backup</div>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Erstellt komprimiertes Image (zstd) mit SHA256 Checksumme.</p>
+        <div class="input-group" style="margin-top:10px">
+          <select id="backup-source"></select>
+          <input type="text" id="backup-target" placeholder="Zielpfad (z.B. /mnt/usb)" value="/tmp">
+          <button class="btn btn-sm btn-success" onclick="startBackup()">Backup</button>
+        </div>
+        <div id="backup-task"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Disk Restore</div>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Stellt ein Image auf eine Disk wieder her (mit Checksumme).</p>
+        <div class="input-group" style="margin-top:10px">
+          <input type="text" id="restore-image" placeholder="Image-Pfad (/mnt/usb/backup.img.zst)">
+          <select id="restore-target"></select>
+          <button class="btn btn-sm btn-danger" onclick="startRestore()">Restore</button>
+        </div>
+        <div id="restore-task"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Disk Clone (1:1)</div>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Klont eine Disk 1:1 auf eine andere. Ziel wird komplett ueberschrieben!</p>
+      <div class="input-group" style="margin-top:10px">
+        <select id="clone-source"></select>
+        <span style="color:var(--text-dim);padding:8px">&#8594;</span>
+        <select id="clone-target"></select>
+        <button class="btn btn-sm btn-danger" onclick="startClone()">Clone</button>
+      </div>
+      <div id="clone-task"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Multi-Clone (1:N)</div>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Klont eine Source-Disk parallel auf mehrere Ziel-Disks.</p>
+      <div class="input-group" style="margin-top:10px">
+        <select id="mclone-source"></select>
+        <span style="color:var(--text-dim);padding:8px">&#8594;</span>
+        <div id="mclone-targets" style="flex:2"></div>
+        <button class="btn btn-sm btn-danger" onclick="startMultiClone()">Multi-Clone</button>
+      </div>
+      <div id="mclone-task"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">USB-Boot-Stick erstellen</div>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Schreibt eine ISO-Datei auf einen USB-Stick (bootfaehig).</p>
+      <div class="input-group" style="margin-top:10px">
+        <input type="text" id="usbwrite-iso" placeholder="ISO-Pfad (z.B. /mnt/usb/image.iso)">
+        <select id="usbwrite-device"></select>
+        <button class="btn btn-sm btn-danger" onclick="startUsbWrite()">Auf USB schreiben</button>
+      </div>
+      <div id="usbwrite-task"></div>
+    </div>
+  </div>
+
+  <!-- WIFI -->
+  <div class="page" id="page-wifi">
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">Verfuegbare Netzwerke</div>
+          <button class="btn btn-sm btn-outline" onclick="scanWifi()">Scannen</button>
+        </div>
+        <table id="tbl-wifi" style="margin-top:10px">
+          <thead><tr><th>SSID</th><th>Signal</th><th>Sicherheit</th><th>Aktion</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Verbindung</div>
+        <div id="wifi-status" style="margin-top:10px;font-size:13px">Lade...</div>
+        <div class="section-title">Manuell verbinden</div>
+        <div class="input-group">
+          <input type="text" id="wifi-ssid" placeholder="SSID">
+          <input type="text" id="wifi-pass" placeholder="Passwort">
+          <button class="btn btn-sm btn-success" onclick="connectWifi()">Verbinden</button>
+        </div>
+        <div id="wifi-result" style="font-size:13px;margin-top:8px"></div>
+        <div class="section-title">Gespeicherte Netzwerke</div>
+        <div id="wifi-saved" style="font-size:13px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILE EXPLORER -->
+  <div class="page" id="page-explorer">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Datei-Explorer / Data Recovery</div>
+        <div class="actions" style="margin:0">
+          <select id="explorer-partition" onchange="mountAndBrowse()"></select>
+          <button class="btn btn-sm" onclick="loadPartitions()">Aktualisieren</button>
+        </div>
+      </div>
+      <div id="explorer-breadcrumb" style="font-size:13px;color:var(--text-dim);margin:8px 0;font-family:monospace"></div>
+      <table id="tbl-explorer">
+        <thead><tr><th>Name</th><th>Groesse</th><th>Geaendert</th><th>Aktion</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PASSWORD RESET -->
+  <div class="page" id="page-passreset">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title" style="color:var(--warning)">Windows Passwort-Reset</div>
+      </div>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Setzt Windows-Benutzerpasswoerter offline zurueck (loescht das Passwort).</p>
+      <div class="input-group">
+        <select id="passreset-partition" onchange="loadWinUsers()">
+          <option value="">-- Windows-Partition waehlen --</option>
+        </select>
+        <button class="btn btn-sm btn-outline" onclick="loadWinPartitions()">Partitionen suchen</button>
+      </div>
+      <table id="tbl-winusers" style="display:none;margin-top:12px">
+        <thead><tr><th>Benutzer</th><th>RID</th><th>Admin</th><th>Status</th><th>Aktion</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div id="passreset-result" style="margin-top:10px;font-size:13px"></div>
+    </div>
+  </div>
+
+  <!-- EVENT LOG -->
+  <div class="page" id="page-eventlog">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Windows Event-Log Viewer</div>
+        <div class="actions" style="margin:0">
+          <select id="evtlog-partition" onchange="loadEventLogs()">
+            <option value="">-- Partition waehlen --</option>
+          </select>
+          <button class="btn btn-sm btn-outline" onclick="loadWinPartitions();populateEvtPartitions()">Suchen</button>
+        </div>
+      </div>
+      <div class="grid-2" style="margin-top:12px">
+        <div>
+          <div class="section-title">Log-Dateien</div>
+          <div id="evtlog-list" style="max-height:400px;overflow-y:auto;font-size:12px"></div>
+        </div>
+        <div>
+          <div class="section-title">Eintraege</div>
+          <div class="terminal" id="evtlog-content" style="min-height:400px">Log-Datei auswaehlen...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SSH -->
+  <div class="page" id="page-ssh">
+    <div class="card">
+      <div class="card-title">SSH Remote-Ausfuehrung</div>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Fuehrt einzelne Befehle auf entfernten Geraeten aus.</p>
+      <div class="grid-2" style="margin-top:12px">
+        <div class="input-group"><input type="text" id="ssh-host" placeholder="Host/IP"></div>
+        <div class="input-group">
+          <input type="text" id="ssh-port" placeholder="Port" value="22" style="max-width:80px">
+          <input type="text" id="ssh-user" placeholder="Benutzer" value="root">
+          <input type="text" id="ssh-pass" placeholder="Passwort">
+        </div>
+      </div>
+      <div class="input-group">
+        <input type="text" id="ssh-cmd" placeholder="Befehl eingeben (z.B. hostname, uptime, df -h)">
+        <button class="btn btn-sm btn-success" onclick="execSsh()">Ausfuehren</button>
+      </div>
+      <div class="terminal" id="ssh-output" style="min-height:200px;margin-top:10px">Bereit...</div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">VNC Remote Desktop Test</div>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Prueft ob ein VNC-Server erreichbar ist.</p>
+      <div class="input-group">
+        <input type="text" id="vnc-host" placeholder="Host/IP">
+        <input type="text" id="vnc-port" placeholder="Port" value="5900" style="max-width:80px">
+        <button class="btn btn-sm" onclick="testVnc()">Testen</button>
+      </div>
+      <div id="vnc-result" style="font-size:13px;margin-top:8px"></div>
+    </div>
+  </div>
+
+  <!-- SESSION LOG -->
+  <div class="page" id="page-sessionlog">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Session-Log</div>
+        <div class="actions" style="margin:0">
+          <button class="btn btn-sm btn-outline" onclick="loadSessionLog()">Aktualisieren</button>
+          <button class="btn btn-sm btn-success" onclick="exportSessionLog()">Export</button>
+        </div>
+      </div>
+      <table id="tbl-sessionlog">
+        <thead><tr><th>Zeit</th><th>Aktion</th><th>Details</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<!-- Confirmation dialog -->
+<div class="confirm-overlay" id="confirm-dialog" style="display:none">
+  <div class="confirm-box">
+    <h3 id="confirm-title">Bestaetigung</h3>
+    <p id="confirm-msg"></p>
+    <div class="confirm-actions">
+      <button class="btn btn-outline" onclick="confirmNo()">Abbrechen</button>
+      <button class="btn btn-danger" onclick="confirmYes()">Ausfuehren</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let sysinfo = {};
+let confirmCallback = null;
+
+// i18n
+let currentLang = 'de';
+const i18n = {
+  de: {
+    dashboard: 'Dashboard', sysinfo: 'System Info', wiper: 'Wiper', network: 'Netzwerk',
+    disks: 'Datentraeger', hwtest: 'Hardware Test', bios: 'BIOS Tools', backup: 'Backup/Restore',
+    wifi: 'WiFi', explorer: 'Datei-Explorer', passreset: 'Passwort-Reset', eventlog: 'Event-Log', ssh: 'SSH', sessionlog: 'Log',
+    export_txt: 'Export TXT', refresh: 'Aktualisieren', connect: 'Verbinden', scan: 'Scannen',
+    start: 'Starten', cancel: 'Abbrechen', execute: 'Ausfuehren', search: 'Suchen',
+    phone_access: 'Handy-Zugriff', modules: 'Module', confirmation: 'Bestaetigung',
+    manufacturer: 'Hersteller', model: 'Modell', serial: 'Seriennummer'
+  },
+  en: {
+    dashboard: 'Dashboard', sysinfo: 'System Info', wiper: 'Wiper', network: 'Network',
+    disks: 'Disks', hwtest: 'Hardware Test', bios: 'BIOS Tools', backup: 'Backup/Restore',
+    wifi: 'WiFi', explorer: 'File Explorer', passreset: 'Password Reset', eventlog: 'Event Log', ssh: 'SSH', sessionlog: 'Log',
+    export_txt: 'Export TXT', refresh: 'Refresh', connect: 'Connect', scan: 'Scan',
+    start: 'Start', cancel: 'Cancel', execute: 'Execute', search: 'Search',
+    phone_access: 'Phone Access', modules: 'Modules', confirmation: 'Confirmation',
+    manufacturer: 'Manufacturer', model: 'Model', serial: 'Serial Number'
+  }
+};
+function toggleLang() {
+  currentLang = currentLang === 'de' ? 'en' : 'de';
+  document.getElementById('lang-btn').textContent = currentLang === 'de' ? 'EN' : 'DE';
+  document.querySelectorAll('.nav-btn').forEach(btn => {
+    const key = btn.dataset.page;
+    if (i18n[currentLang][key]) btn.textContent = i18n[currentLang][key];
+  });
+}
+
+// Clock
+setInterval(() => {
+  const el = document.getElementById('h-time');
+  if (el) el.textContent = new Date().toLocaleString('de-CH');
+}, 1000);
+
+// Navigation
+document.querySelectorAll('.nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => showPage(btn.dataset.page));
+});
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  const page = document.getElementById('page-' + name);
+  if (page) page.classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    if (b.dataset.page === name) b.classList.add('active');
+  });
+  // Load specific data
+  if (name === 'bios') { loadBiosSettings(); loadBootDevices(); loadPxeInfo(); }
+  if (name === 'wiper' || name === 'backup') populateDiskSelects();
+  if (name === 'disks') loadSmartDashboard();
+  if (name === 'sessionlog') loadSessionLog();
+  if (name === 'wifi') { scanWifi(); loadWifiStatus(); }
+  if (name === 'explorer') loadPartitions();
+  if (name === 'passreset') loadWinPartitions();
+}
+
+// API
+async function api(path, data) {
+  const opts = data !== undefined ? {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
+  } : {};
+  const res = await fetch('/api/' + path, opts);
+  return res.json();
+}
+
+// Confirm dialog
+function confirm2(title, msg, cb) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-msg').textContent = msg;
+  document.getElementById('confirm-dialog').style.display = 'flex';
+  confirmCallback = cb;
+}
+function confirmYes() {
+  document.getElementById('confirm-dialog').style.display = 'none';
+  if (confirmCallback) confirmCallback();
+  confirmCallback = null;
+}
+function confirmNo() {
+  document.getElementById('confirm-dialog').style.display = 'none';
+  confirmCallback = null;
+}
+
+// Task UI helper
+function renderTaskUI(containerId, taskId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = `
+    <div class="task-status task-running"><div class="spinner"></div> Laeuft...</div>
+    <div class="progress-wrap">
+      <div class="progress-bar"><div class="progress-fill" id="pf-${taskId}"></div></div>
+      <div class="progress-text"><span id="pp-${taskId}">0%</span><span id="pt-${taskId}"></span></div>
+    </div>
+    <div class="terminal" id="to-${taskId}" style="min-height:120px"></div>
+  `;
+  pollTask(taskId, containerId);
+}
+
+function pollTask(taskId, containerId) {
+  const iv = setInterval(async () => {
+    const t = await api('task/' + taskId);
+    if (t.error) { clearInterval(iv); return; }
+
+    const pf = document.getElementById('pf-' + taskId);
+    const pp = document.getElementById('pp-' + taskId);
+    const pt = document.getElementById('pt-' + taskId);
+    const to = document.getElementById('to-' + taskId);
+
+    if (pf) pf.style.width = t.progress + '%';
+    if (pp) pp.textContent = t.progress + '%';
+    if (to) { to.textContent = t.output; to.scrollTop = to.scrollHeight; }
+
+    if (t.status === 'done') {
+      clearInterval(iv);
+      if (pt) {
+        const dur = t.finished && t.started ? Math.round(t.finished - t.started) : 0;
+        pt.textContent = dur + 's';
+      }
+      const container = document.getElementById(containerId);
+      const statusEl = container.querySelector('.task-status');
+      if (statusEl) {
+        if (t.exit_code === 0) {
+          statusEl.className = 'task-status task-done';
+          statusEl.innerHTML = 'Abgeschlossen';
+        } else {
+          statusEl.className = 'task-status task-error';
+          statusEl.innerHTML = 'Fehler (Exit: ' + t.exit_code + ')';
+        }
+      }
+    }
+  }, 1000);
+}
+
+// Load sysinfo
+async function loadSysinfo() {
+  sysinfo = await api('sysinfo');
+  updateDashboard();
+  updateSysinfoPage();
+  updateDisksPage();
+  updateBiosPage();
+  populateDiskSelects();
+  loadBattery();
+  loadMonitors();
+}
+
+function updateDashboard() {
+  const s = sysinfo;
+  document.getElementById('h-hostname').textContent = s.hostname || '...';
+  document.getElementById('h-model').textContent = (s.manufacturer||'') + ' ' + (s.model||'');
+  document.getElementById('h-serial').textContent = 'SN: ' + (s.serial||'?');
+
+  const cpuShort = (s.cpu||'').replace(/\(.*?\)/g,'').split('@')[0].trim().split(' ').slice(-3).join(' ');
+  document.getElementById('s-cpu').textContent = cpuShort;
+  document.getElementById('s-cpu-sub').textContent = (s.cores||'?') + ' Kerne' + (s.cpu_temp && s.cpu_temp !== 'N/A' ? ' | ' + s.cpu_temp : '');
+
+  document.getElementById('s-ram').textContent = s.ram_total || '?';
+  document.getElementById('s-ram-sub').textContent = 'Belegt: ' + (s.ram_used||'?') + ' / Frei: ' + (s.ram_free||'?');
+
+  const dc = (s.disks||[]).length;
+  document.getElementById('s-disks').textContent = dc + ' Disk' + (dc!==1?'s':'');
+  document.getElementById('s-disks-sub').textContent = (s.disks||[]).map(d=>d.name+' '+d.type+' '+d.size).join(', ');
+
+  const nets = (s.interfaces||[]).filter(i=>i.state==='up');
+  document.getElementById('s-net').textContent = nets.length + ' aktiv';
+  document.getElementById('s-net-sub').textContent = nets.map(i=>i.ip).join(', ') || 'keine IP';
+
+  // Sparkline data collection
+  const cpuTemp = parseFloat((s.cpu_temp||'0').replace(/[^0-9.]/g,'')) || 0;
+  sparkData.cpu.push(cpuTemp); if (sparkData.cpu.length > 20) sparkData.cpu.shift();
+  const ramMatch = (s.ram_used||'').match(/([\d.]+)/);
+  const ramVal = ramMatch ? parseFloat(ramMatch[1]) : 0;
+  sparkData.ram.push(ramVal); if (sparkData.ram.length > 20) sparkData.ram.shift();
+  addSparkline('spark-cpu', sparkData.cpu, '#3b82f6');
+  addSparkline('spark-ram', sparkData.ram, '#10b981');
+}
+
+function updateSysinfoPage() {
+  const s = sysinfo;
+  setInfoGrid('info-device', {
+    'Hersteller':s.manufacturer, 'Modell':s.model, 'Seriennummer':s.serial,
+    'UUID':s.uuid, 'SKU':s.sku, 'Board SN':s.board_serial
+  });
+  setInfoGrid('info-bios', { 'Vendor':s.bios_vendor, 'Version':s.bios_version, 'Datum':s.bios_date, 'Boot-Modus':s.boot_mode });
+  setInfoGrid('info-cpu', { 'CPU':s.cpu, 'Kerne':s.cores, 'Temperatur':s.cpu_temp, 'RAM Total':s.ram_total, 'RAM Belegt':s.ram_used, 'RAM Frei':s.ram_free });
+  setInfoGrid('info-security', { 'Boot-Modus':s.boot_mode, 'TPM':s.tpm, 'Windows Key':s.windows_key });
+
+  // Disks table
+  let dh = '<thead><tr><th>Device</th><th>Typ</th><th>Groesse</th><th>Modell</th><th>SMART</th></tr></thead><tbody>';
+  (s.disks||[]).forEach(d => {
+    const b = d.smart==='PASSED'?'badge-success':d.smart==='FAILED'?'badge-danger':'badge-warning';
+    dh += `<tr><td>/dev/${d.name}</td><td><span class="badge badge-info">${d.type}</span></td><td>${d.size}</td><td>${d.model}</td><td><span class="badge ${b}">${d.smart}</span></td></tr>`;
+  });
+  document.getElementById('tbl-disks-info').innerHTML = dh + '</tbody>';
+
+  // Net table
+  let nh = '<thead><tr><th>Interface</th><th>MAC</th><th>IP</th><th>Status</th></tr></thead><tbody>';
+  (s.interfaces||[]).forEach(i => {
+    const b = i.state==='up'?'badge-success':'badge-danger';
+    nh += `<tr><td>${i.name}</td><td style="font-family:monospace;font-size:11px">${i.mac}</td><td>${i.ip}</td><td><span class="badge ${b}">${i.state}</span></td></tr>`;
+  });
+  document.getElementById('tbl-net-info').innerHTML = nh + '</tbody>';
+
+  // RAM slots
+  if ((s.ram_slots||[]).length > 0) {
+    document.getElementById('ram-slots-card').style.display = 'block';
+    let rh = '<thead><tr><th>Slot</th><th>Groesse</th><th>Typ</th><th>Speed</th><th>Hersteller</th></tr></thead><tbody>';
+    s.ram_slots.forEach(r => {
+      rh += `<tr><td>${r.locator||'?'}</td><td>${r.size||'?'}</td><td>${r.type||'?'}</td><td>${r.speed||'?'}</td><td>${r.manufacturer||'?'}</td></tr>`;
+    });
+    document.getElementById('tbl-ram-slots').innerHTML = rh + '</tbody>';
+  }
+}
+
+function updateDisksPage() {
+  const tbody = document.querySelector('#tbl-disks-detail tbody');
+  let h = '';
+  (sysinfo.disks||[]).forEach(d => {
+    const b = d.smart==='PASSED'?'badge-success':d.smart==='FAILED'?'badge-danger':'badge-warning';
+    h += `<tr><td>/dev/${d.name}</td><td><span class="badge badge-info">${d.type}</span></td><td>${d.size}</td><td>${d.model}</td><td style="font-family:monospace;font-size:11px">${d.serial}</td><td><span class="badge ${b}">${d.smart}</span></td><td><button class="btn btn-sm btn-outline" onclick="showSmart('${d.name}')">SMART</button></td></tr>`;
+  });
+  tbody.innerHTML = h;
+}
+
+function updateBiosPage() {
+  const s = sysinfo;
+  setInfoGrid('info-bios-detail', { 'Vendor':s.bios_vendor, 'Version':s.bios_version, 'Datum':s.bios_date, 'Boot-Modus':s.boot_mode });
+
+  let html = '';
+  [{label:'UEFI',ok:(s.boot_mode||'').includes('UEFI')},
+   {label:'Secure Boot',ok:(s.boot_mode||'').includes('AN')},
+   {label:'TPM 2.0',ok:(s.tpm||'').includes('2.0')},
+   {label:'Windows 11 Ready',ok:(s.tpm||'').includes('2.0')&&(s.boot_mode||'').includes('UEFI')}
+  ].forEach(c => {
+    const cls = c.ok?'badge-success':'badge-danger', txt = c.ok?'OK':'FEHLT';
+    html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)"><span>${c.label}</span><span class="badge ${cls}">${txt}</span></div>`;
+  });
+  document.getElementById('bios-security').innerHTML = html;
+}
+
+function populateDiskSelects() {
+  const disks = sysinfo.disks || [];
+  const opts = disks.map(d => `<option value="${d.name}">/dev/${d.name} (${d.type} ${d.size} ${d.model})</option>`).join('');
+  ['wipe-disk','erase-disk','backup-source','restore-target','clone-source','clone-target','disktest-device','usbwrite-device','bitlocker-partition'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = opts;
+  });
+  populateMultiCloneTargets();
+}
+
+function setInfoGrid(id, data) {
+  let h = '';
+  for (const [k,v] of Object.entries(data)) h += `<div class="info-label">${k}</div><div class="info-value">${v||'N/A'}</div>`;
+  document.getElementById(id).innerHTML = h;
+}
+
+// ---- EXPORT / SCREENSHOT ----
+function exportScreenshot() {
+  const page = document.querySelector('.page.active');
+  const title = document.querySelector('.nav-btn.active')?.textContent || 'Export';
+  const text = page?.innerText || 'Keine Daten';
+  downloadFile('flowbit_' + title + '_' + new Date().toISOString().slice(0,10) + '.txt', text);
+}
+
+// ---- BATTERY ----
+async function loadBattery() {
+  const r = await api('battery');
+  if (!r.available) return;
+  document.getElementById('battery-card').style.display = 'block';
+  let html = '<div class="grid-2"><div>';
+  html += '<div class="info-grid">';
+  const fields = {
+    'Status': r.status, 'Kapazitaet': r.capacity + '%',
+    'Design-Kapazitaet': r.design_capacity, 'Aktuelle Kapazitaet': r.current_capacity,
+    'Wear Level': r.wear_level + '%', 'Ladezyklen': r.cycle_count,
+    'Technologie': r.technology, 'Hersteller': r.manufacturer,
+    'Modell': r.model_name, 'Seriennummer': r.serial_number
+  };
+  for (const [k,v] of Object.entries(fields)) {
+    if (v && v !== 'N/A' && v !== 'undefined%') html += `<div class="info-label">${k}</div><div class="info-value">${v}</div>`;
+  }
+  html += '</div></div>';
+  if (r.wear_level !== undefined) {
+    const wl = parseFloat(r.wear_level);
+    const color = wl < 20 ? 'var(--success)' : wl < 50 ? 'var(--warning)' : 'var(--danger)';
+    const health = 100 - wl;
+    html += `<div style="text-align:center;padding:20px">
+      <div style="font-size:48px;font-weight:700;color:${color}">${health.toFixed(1)}%</div>
+      <div style="color:var(--text-dim);font-size:13px;margin-top:4px">Batterie-Gesundheit</div>
+      <div class="progress-bar" style="margin-top:12px;height:12px"><div class="progress-fill" style="width:${health}%;background:${color}"></div></div>
+    </div>`;
+  }
+  html += '</div>';
+  document.getElementById('battery-info').innerHTML = html;
+}
+
+// ---- MONITORS ----
+async function loadMonitors() {
+  const r = await api('monitors');
+  if (!r.monitors || r.monitors.length === 0) return;
+  document.getElementById('monitor-card').style.display = 'block';
+  const tbody = document.querySelector('#tbl-monitors tbody');
+  tbody.innerHTML = r.monitors.map(m =>
+    `<tr><td>${m.name||'?'}</td><td>${m.manufacturer||'?'}</td><td>${m.resolution||'?'}</td><td>${m.connection||'?'}</td><td style="font-family:monospace;font-size:11px">${m.serial||'?'}</td></tr>`
+  ).join('');
+}
+
+// ---- NETWORK ----
+async function doPing() {
+  const el = document.getElementById('ping-out');
+  el.textContent = 'Pinging...'; const r = await api('ping',{target:document.getElementById('ping-target').value});
+  el.textContent = r.output||'Keine Antwort';
+}
+async function doDns() {
+  const el = document.getElementById('dns-out');
+  el.textContent = 'Lookup...'; const r = await api('dns',{target:document.getElementById('dns-target').value});
+  el.textContent = r.output||'Keine Ergebnisse';
+}
+async function doTrace() {
+  const r = await api('traceroute',{target:document.getElementById('trace-target').value});
+  if (r.task_id) renderTaskUI('trace-task', r.task_id);
+}
+async function doPortCheck() {
+  const el = document.getElementById('port-out');
+  const t = document.getElementById('port-target').value, p = document.getElementById('port-num').value;
+  el.textContent = 'Pruefe...';
+  const r = await api('portcheck',{target:t,port:parseInt(p)});
+  el.textContent = r.open ? `Port ${p} ist OFFEN` : `Port ${p} ist GESCHLOSSEN`;
+}
+async function doSpeed(size) {
+  const el = document.getElementById('speed-out');
+  el.innerHTML = '<div class="spinner"></div> Download ' + size + ' MB...';
+  const r = await api('speedtest',{size});
+  el.textContent = r.mbps ? `Download: ${r.mbps} Mbit/s (${size} MB Test)` : 'Speedtest fehlgeschlagen';
+}
+async function doNetDiag() {
+  const r = await api('network/diag',{});
+  if (r.task_id) renderTaskUI('netdiag-task', r.task_id);
+}
+
+// ---- WAKE-ON-LAN ----
+async function sendWol() {
+  const mac = document.getElementById('wol-mac').value;
+  if (!mac) return;
+  const r = await api('wol', {mac});
+  document.getElementById('wol-result').innerHTML = r.success ?
+    '<span style="color:var(--success)">Magic Packet gesendet an ' + mac + '</span>' :
+    '<span style="color:var(--danger)">Fehler: ' + (r.error||'unbekannt') + '</span>';
+  loadWolHistory();
+}
+async function loadWolHistory() {
+  const r = await api('wol/history');
+  const el = document.getElementById('wol-history');
+  if (r.history && r.history.length) {
+    el.innerHTML = r.history.map(h => `<div style="padding:3px 0">${h.mac} — ${h.time}</div>`).join('');
+  } else el.textContent = 'Keine Eintraege';
+}
+
+// ---- NETWORK SCANNER ----
+async function startNetScan() {
+  const subnet = document.getElementById('scan-subnet').value;
+  const r = await api('netscan', {subnet});
+  if (r.task_id) {
+    renderTaskUI('netscan-task', r.task_id);
+    const checkResults = setInterval(async () => {
+      const t = await api('task/' + r.task_id);
+      if (t.status === 'done' && t.results) {
+        clearInterval(checkResults);
+        const tbl = document.getElementById('tbl-netscan');
+        tbl.style.display = 'table';
+        tbl.querySelector('tbody').innerHTML = t.results.map(h =>
+          `<tr><td>${h.ip}</td><td style="font-family:monospace;font-size:11px">${h.mac||'?'}</td><td>${h.hostname||'?'}</td><td><button class="btn btn-sm btn-outline" onclick="document.getElementById('wol-mac').value='${h.mac}';showPage('network')">WOL</button></td></tr>`
+        ).join('');
+      }
+    }, 2000);
+  }
+}
+
+// ---- SMART ----
+async function showSmart(disk) {
+  const el = document.getElementById('smart-out');
+  el.textContent = 'Lade SMART...';
+  const r = await api('smart',{disk});
+  el.textContent = r.output||'Keine Daten';
+}
+
+// ---- WIPER ----
+function startWipe() {
+  const dev = document.getElementById('wipe-disk').value;
+  const method = document.getElementById('wipe-method').value;
+  const passes = document.getElementById('wipe-passes').value;
+  confirm2('Disk Wipe', `ALLE Daten auf /dev/${dev} werden mit ${passes}x ${method} unwiderruflich geloescht! Fortfahren?`, async () => {
+    const r = await api('wiper/wipe',{device:dev, method, passes:parseInt(passes)});
+    if (r.task_id) renderTaskUI('wipe-task', r.task_id);
+  });
+}
+function startSecureErase() {
+  const dev = document.getElementById('erase-disk').value;
+  confirm2('SSD Secure Erase', `Secure Erase auf /dev/${dev} ausfuehren? Alle Daten werden geloescht!`, async () => {
+    const r = await api('wiper/secure-erase',{device:dev});
+    if (r.task_id) renderTaskUI('erase-task', r.task_id);
+  });
+}
+async function startRamScrub() {
+  const r = await api('wiper/ram-scrub',{});
+  if (r.task_id) renderTaskUI('ramscrub-task', r.task_id);
+}
+
+// ---- HW TEST ----
+async function startRamTest(size, passes) {
+  const r = await api('hwtest/ram',{size_mb:size, passes});
+  if (r.task_id) renderTaskUI('ramtest-task', r.task_id);
+}
+async function startCpuTest(dur) {
+  const r = await api('hwtest/cpu',{duration:dur});
+  if (r.task_id) renderTaskUI('cputest-task', r.task_id);
+}
+async function startDiskTest() {
+  const dev = document.getElementById('disktest-device').value;
+  const r = await api('hwtest/disk',{device:dev});
+  if (r.task_id) renderTaskUI('disktest-task', r.task_id);
+}
+
+// ---- BIOS ----
+async function loadBiosSettings() {
+  const status = document.getElementById('bios-settings-status');
+  status.textContent = 'Lade BIOS Settings...';
+  const r = await api('bios/settings');
+  if (!r.available) {
+    status.textContent = 'Firmware-Attributes nicht verfuegbar (nur Dell/HP/Lenovo mit Linux-Treiber).';
+    return;
+  }
+  status.textContent = `${r.settings.length} Settings gefunden (Vendor: ${r.vendor})`;
+  const tbody = document.querySelector('#tbl-bios-settings tbody');
+  let h = '';
+  r.settings.forEach(s => {
+    h += `<tr><td>${s.display_name||s.name}</td><td><strong>${s.current_value||'N/A'}</strong></td><td>${s.default_value||'-'}</td><td style="font-size:11px;color:var(--text-dim)">${s.possible_values||''}</td></tr>`;
+  });
+  tbody.innerHTML = h || '<tr><td colspan="4" style="color:var(--text-dim)">Keine Settings verfuegbar</td></tr>';
+
+  // Load profiles
+  const profiles = await api('bios/profiles');
+  let ph = '';
+  (profiles.local||[]).forEach(p => {
+    ph += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><strong>${p.name}</strong> <span style="color:var(--text-dim);font-size:12px">(${p.settings_count} Settings, ${p.created})</span></div>
+      <button class="btn btn-sm btn-outline" onclick="exportProfileUsb('${p.name}')">Auf USB kopieren</button>
+    </div>`;
+  });
+  (profiles.usb||[]).forEach(p => {
+    ph += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div><strong>${p.name}</strong> <span class="badge badge-info">USB</span></div>
+    </div>`;
+  });
+  document.getElementById('bios-profiles-list').innerHTML = ph || '<p style="color:var(--text-dim);font-size:13px">Keine Profile gespeichert.</p>';
+}
+
+async function saveBiosProfile() {
+  const name = document.getElementById('profile-name').value.trim();
+  if (!name) { toast('Bitte Profilname eingeben', 'warning'); return; }
+  const r = await api('bios/save-profile',{name});
+  if (r.success) { toast('Profil gespeichert: ' + r.path, 'success'); loadBiosSettings(); }
+  else toast('Fehler: ' + (r.error||'unbekannt'), 'error');
+}
+
+async function exportProfileUsb(name) {
+  const r = await api('bios/export-usb',{name});
+  if (r.success) toast('Auf USB kopiert: ' + r.path, 'success');
+  else toast('Fehler: ' + r.error, 'error');
+}
+
+async function exportBiosTxt() {
+  const r = await api('bios/export-txt',{});
+  if (r.content) downloadFile(r.filename, r.content);
+}
+
+// ---- BOOT DEVICES ----
+async function loadBootDevices() {
+  const r = await api('bootdevices');
+  let html = '';
+  if (r.boot_order) {
+    html += '<div class="section-title">Boot-Reihenfolge</div>';
+    html += '<ol style="margin:8px 0 16px 20px;font-size:13px">';
+    (r.boot_entries||[]).forEach(e => {
+      const icon = e.active ? '&#128994;' : '&#9898;';
+      html += `<li style="padding:4px 0">${icon} ${e.name} <span style="color:var(--text-dim);font-size:11px">${e.path||''}</span></li>`;
+    });
+    html += '</ol>';
+  }
+  if (r.bootable_disks && r.bootable_disks.length) {
+    html += '<div class="section-title">Bootfaehige Datentraeger</div>';
+    html += '<table><thead><tr><th>Device</th><th>Groesse</th><th>Typ</th><th>Label</th></tr></thead><tbody>';
+    r.bootable_disks.forEach(d => {
+      html += `<tr><td>${d.name}</td><td>${d.size}</td><td>${d.fstype||'?'}</td><td>${d.label||'-'}</td></tr>`;
+    });
+    html += '</tbody></table>';
+  }
+  if (!html) html = '<p style="color:var(--text-dim);font-size:13px">Keine Boot-Informationen verfuegbar</p>';
+  document.getElementById('boot-devices').innerHTML = html;
+}
+
+// ---- BACKUP ----
+function startBackup() {
+  const src = document.getElementById('backup-source').value;
+  const tgt = document.getElementById('backup-target').value;
+  confirm2('Disk Backup', `Backup von /dev/${src} nach ${tgt} erstellen?`, async () => {
+    const r = await api('backup/disk',{source:src, target_path:tgt});
+    if (r.task_id) renderTaskUI('backup-task', r.task_id);
+  });
+}
+function startRestore() {
+  const img = document.getElementById('restore-image').value;
+  const tgt = document.getElementById('restore-target').value;
+  confirm2('Disk Restore', `ACHTUNG: /dev/${tgt} wird komplett ueberschrieben mit ${img}! Fortfahren?`, async () => {
+    const r = await api('backup/restore',{image:img, target:tgt});
+    if (r.task_id) renderTaskUI('restore-task', r.task_id);
+  });
+}
+function startClone() {
+  const src = document.getElementById('clone-source').value;
+  const tgt = document.getElementById('clone-target').value;
+  if (src === tgt) { toast('Source und Target muessen unterschiedlich sein!', 'warning'); return; }
+  confirm2('Disk Clone', `ACHTUNG: /dev/${tgt} wird 1:1 mit /dev/${src} ueberschrieben! Alle Daten auf /dev/${tgt} gehen verloren!`, async () => {
+    const r = await api('backup/clone',{source:src, target:tgt});
+    if (r.task_id) renderTaskUI('clone-task', r.task_id);
+  });
+}
+
+// ---- MULTI-CLONE ----
+function populateMultiCloneTargets() {
+  const disks = sysinfo.disks || [];
+  const html = disks.map(d =>
+    `<label style="display:inline-flex;align-items:center;gap:4px;margin-right:12px;font-size:12px;cursor:pointer">
+      <input type="checkbox" class="mclone-target" value="${d.name}"> /dev/${d.name} (${d.size})
+    </label>`
+  ).join('');
+  document.getElementById('mclone-targets').innerHTML = html;
+  const opts = disks.map(d => `<option value="${d.name}">/dev/${d.name} (${d.type} ${d.size})</option>`).join('');
+  const sel = document.getElementById('mclone-source');
+  if (sel) sel.innerHTML = opts;
+}
+function startMultiClone() {
+  const src = document.getElementById('mclone-source').value;
+  const targets = [...document.querySelectorAll('.mclone-target:checked')].map(c => c.value).filter(t => t !== src);
+  if (!targets.length) { toast('Mindestens ein Ziel auswaehlen!', 'warning'); return; }
+  confirm2('Multi-Clone', `ACHTUNG: ${targets.map(t=>'/dev/'+t).join(', ')} werden mit /dev/${src} ueberschrieben!`, async () => {
+    const r = await api('backup/multiclone', {source: src, targets});
+    if (r.task_id) renderTaskUI('mclone-task', r.task_id);
+  });
+}
+
+// ---- AUTOPILOT ----
+async function exportAutopilot() {
+  const r = await api('autopilot', {});
+  if (r.csv) downloadFile(r.filename || 'AutopilotHash.csv', r.csv);
+}
+
+// ---- WIFI ----
+async function scanWifi() {
+  const r = await api('wifi/scan');
+  const tbody = document.querySelector('#tbl-wifi tbody');
+  if (!r.networks || !r.networks.length) { tbody.innerHTML = '<tr><td colspan="4">Keine Netzwerke gefunden</td></tr>'; return; }
+  tbody.innerHTML = r.networks.map(n => {
+    const bars = n.signal > 70 ? '▓▓▓▓' : n.signal > 50 ? '▓▓▓░' : n.signal > 30 ? '▓▓░░' : '▓░░░';
+    return `<tr><td><strong>${n.ssid}</strong></td><td>${bars} ${n.signal}%</td><td><span class="badge badge-info">${n.security||'Open'}</span></td>
+      <td><button class="btn btn-sm btn-outline" onclick="document.getElementById('wifi-ssid').value='${n.ssid}'">Verbinden</button></td></tr>`;
+  }).join('');
+}
+async function connectWifi() {
+  const ssid = document.getElementById('wifi-ssid').value;
+  const pass = document.getElementById('wifi-pass').value;
+  document.getElementById('wifi-result').innerHTML = '<div class="spinner"></div> Verbinde...';
+  const r = await api('wifi/connect', {ssid, password: pass});
+  document.getElementById('wifi-result').innerHTML = r.success ?
+    '<span style="color:var(--success)">Verbunden mit ' + ssid + '</span>' :
+    '<span style="color:var(--danger)">' + (r.error||'Verbindung fehlgeschlagen') + '</span>';
+  loadWifiStatus();
+}
+async function loadWifiStatus() {
+  const r = await api('wifi/status');
+  document.getElementById('wifi-status').innerHTML = r.connected ?
+    `<span class="badge badge-success">Verbunden</span> ${r.ssid||''} (${r.ip||''})` :
+    '<span class="badge badge-warning">Nicht verbunden</span>';
+  const saved = await api('wifi/saved');
+  document.getElementById('wifi-saved').innerHTML = (saved.networks||[]).map(n =>
+    `<div style="padding:4px 0;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)">
+      <span>${n.name}</span>
+      <button class="btn btn-sm btn-outline" onclick="api('wifi/disconnect',{name:'${n.name}'}).then(()=>loadWifiStatus())">Trennen</button>
+    </div>`
+  ).join('') || 'Keine gespeicherten Netzwerke';
+}
+
+// ---- FILE EXPLORER ----
+let currentBrowsePath = '/';
+async function loadPartitions() {
+  const r = await api('partitions');
+  const sel = document.getElementById('explorer-partition');
+  sel.innerHTML = '<option value="">-- Partition waehlen --</option>' +
+    (r.partitions||[]).map(p => `<option value="${p.name}" ${p.mounted?'':'style="color:var(--text-dim)"'}>${p.name} (${p.size} ${p.fstype||'?'}) ${p.mounted?'[mounted]':''}</option>`).join('');
+}
+async function mountAndBrowse() {
+  const part = document.getElementById('explorer-partition').value;
+  if (!part) return;
+  const r = await api('mount', {partition: part});
+  if (r.mountpoint) {
+    currentBrowsePath = r.mountpoint;
+    browsePath(currentBrowsePath);
+  }
+}
+async function browsePath(path) {
+  currentBrowsePath = path;
+  const r = await api('browse', {path});
+  const parts = path.split('/').filter(Boolean);
+  let bc = '<a href="#" onclick="browsePath(\'/\');return false" style="color:var(--accent)">/</a>';
+  let cumPath = '';
+  parts.forEach(p => { cumPath += '/' + p; bc += ` / <a href="#" onclick="browsePath('${cumPath}');return false" style="color:var(--accent)">${p}</a>`; });
+  document.getElementById('explorer-breadcrumb').innerHTML = bc;
+
+  const tbody = document.querySelector('#tbl-explorer tbody');
+  if (!r.entries || !r.entries.length) { tbody.innerHTML = '<tr><td colspan="4">Leer oder kein Zugriff</td></tr>'; return; }
+
+  const entries = r.entries.sort((a,b) => (b.is_dir - a.is_dir) || a.name.localeCompare(b.name));
+
+  let html = '';
+  if (path !== '/') {
+    const parent = path.split('/').slice(0,-1).join('/') || '/';
+    html += `<tr onclick="browsePath('${parent}')" style="cursor:pointer"><td>&#128193; ..</td><td></td><td></td><td></td></tr>`;
+  }
+
+  entries.forEach(e => {
+    const icon = e.is_dir ? '&#128193;' : '&#128196;';
+    const size = e.is_dir ? '-' : formatSize(e.size);
+    const action = e.is_dir ?
+      `<button class="btn btn-sm btn-outline" onclick="browsePath('${path}/${e.name}')">Oeffnen</button>` :
+      `<a href="/api/download?path=${encodeURIComponent(path+'/'+e.name)}" class="btn btn-sm btn-outline" download>Download</a>`;
+    html += `<tr><td style="cursor:${e.is_dir?'pointer':'default'}" ${e.is_dir?`onclick="browsePath('${path}/${e.name}')"`:''}>${icon} ${e.name}</td><td>${size}</td><td style="font-size:11px;color:var(--text-dim)">${e.modified||''}</td><td>${action}</td></tr>`;
+  });
+  tbody.innerHTML = html;
+}
+function formatSize(bytes) {
+  if (!bytes) return '0 B';
+  const units = ['B','KB','MB','GB','TB'];
+  let i = 0;
+  while (bytes >= 1024 && i < units.length-1) { bytes /= 1024; i++; }
+  return bytes.toFixed(i>0?1:0) + ' ' + units[i];
+}
+
+// ---- PASSWORD RESET ----
+async function loadWinPartitions() {
+  const r = await api('winpartitions');
+  const sel = document.getElementById('passreset-partition');
+  sel.innerHTML = '<option value="">-- Windows-Partition waehlen --</option>' +
+    (r.partitions||[]).map(p => `<option value="${p.device}">${p.device} (${p.size}) - ${p.windows_version||'Windows'}</option>`).join('');
+}
+async function loadWinUsers() {
+  const part = document.getElementById('passreset-partition').value;
+  if (!part) return;
+  const r = await api('passreset/users', {partition: part});
+  const tbl = document.getElementById('tbl-winusers');
+  if (!r.users || !r.users.length) { tbl.style.display = 'none'; return; }
+  tbl.style.display = 'table';
+  tbl.querySelector('tbody').innerHTML = r.users.map(u =>
+    `<tr><td><strong>${u.name}</strong></td><td>${u.rid||'?'}</td><td>${u.admin?'<span class="badge badge-warning">Admin</span>':''}</td>
+     <td>${u.locked?'<span class="badge badge-danger">Gesperrt</span>':'<span class="badge badge-success">Aktiv</span>'}</td>
+     <td><button class="btn btn-sm btn-warning" onclick="resetPassword('${part}','${u.name}')">Passwort Reset</button></td></tr>`
+  ).join('');
+}
+async function resetPassword(partition, username) {
+  confirm2('Passwort Reset', `Passwort fuer "${username}" wird geloescht. Fortfahren?`, async () => {
+    const r = await api('passreset/reset', {partition, username});
+    document.getElementById('passreset-result').innerHTML = r.success ?
+      '<span style="color:var(--success)">Passwort erfolgreich zurueckgesetzt fuer: ' + username + '</span>' :
+      '<span style="color:var(--danger)">Fehler: ' + (r.error||'unbekannt') + '</span>';
+  });
+}
+
+// ---- EVENT LOG ----
+async function populateEvtPartitions() {
+  const r = await api('winpartitions');
+  const sel = document.getElementById('evtlog-partition');
+  sel.innerHTML = '<option value="">-- Partition --</option>' +
+    (r.partitions||[]).map(p => `<option value="${p.device}">${p.device} (${p.size})</option>`).join('');
+}
+async function loadEventLogs() {
+  const part = document.getElementById('evtlog-partition').value;
+  if (!part) return;
+  const r = await api('eventlog/list', {partition: part});
+  document.getElementById('evtlog-list').innerHTML = (r.logs||[]).map(l =>
+    `<div style="padding:4px;cursor:pointer;border-bottom:1px solid var(--border)" onclick="readEventLog('${l.path}')" class="hover-dim">
+      ${l.name} <span style="color:var(--text-dim)">(${l.size})</span></div>`
+  ).join('') || 'Keine .evtx Dateien gefunden';
+}
+async function readEventLog(path) {
+  document.getElementById('evtlog-content').textContent = 'Lade...';
+  const r = await api('eventlog/read', {path, count: 100});
+  document.getElementById('evtlog-content').textContent = r.content || r.error || 'Keine Daten';
+}
+
+// ---- SSH ----
+async function execSsh() {
+  const host = document.getElementById('ssh-host').value;
+  const port = document.getElementById('ssh-port').value;
+  const user = document.getElementById('ssh-user').value;
+  const pass = document.getElementById('ssh-pass').value;
+  const cmd = document.getElementById('ssh-cmd').value;
+  if (!host || !cmd) return;
+  document.getElementById('ssh-output').textContent = 'Verbinde...';
+  const r = await api('ssh/exec', {host, port: parseInt(port), user, password: pass, command: cmd});
+  document.getElementById('ssh-output').textContent = r.output || r.error || 'Keine Ausgabe';
+}
+
+// ---- EXPORTS ----
+async function exportSysinfo() {
+  const r = await api('export/sysinfo',{});
+  if (r.content) downloadFile(r.filename, r.content);
+}
+async function exportIntune() {
+  const r = await api('export/intune',{});
+  if (r.content) downloadFile(r.filename, r.content);
+}
+
+function downloadFile(name, content) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([content], {type:'text/plain'}));
+  a.download = name; a.click();
+}
+
+// ---- THEME TOGGLE ----
+function toggleTheme() {
+  document.body.classList.toggle('light');
+  const isLight = document.body.classList.contains('light');
+  document.getElementById('theme-btn').innerHTML = isLight ? '&#9728;&#65039;' : '&#127769;';
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+}
+if (localStorage.getItem('theme') === 'light') { document.body.classList.add('light'); document.getElementById('theme-btn').innerHTML = '&#9728;&#65039;'; }
+
+// ---- TOAST NOTIFICATIONS ----
+function toast(msg, type='info', duration=4000) {
+  const container = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, duration);
+}
+
+// ---- SPARKLINES ----
+const sparkData = { cpu: [], ram: [], net: [] };
+
+function addSparkline(containerId, values, color) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  let existing = el.querySelector('.sparkline');
+  if (!existing) {
+    existing = document.createElement('canvas');
+    existing.className = 'sparkline';
+    existing.width = 120; existing.height = 30;
+    existing.style.cssText = 'margin-top:6px;opacity:0.7';
+    el.appendChild(existing);
+  }
+  const ctx = existing.getContext('2d');
+  ctx.clearRect(0, 0, 120, 30);
+  if (values.length < 2) return;
+  const max = Math.max(...values, 1);
+  const step = 120 / (values.length - 1);
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  values.forEach((v, i) => {
+    const x = i * step;
+    const y = 28 - (v / max * 26);
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+// ---- SESSION LOG ----
+async function loadSessionLog() {
+  const r = await api('sessionlog');
+  const tbody = document.querySelector('#tbl-sessionlog tbody');
+  tbody.innerHTML = (r.log||[]).reverse().map(e =>
+    `<tr><td style="white-space:nowrap">${e.time}</td><td><strong>${e.action}</strong></td><td style="color:var(--text-dim)">${e.details||''}</td></tr>`
+  ).join('') || '<tr><td colspan="3">Keine Eintraege</td></tr>';
+}
+async function exportSessionLog() {
+  const r = await api('sessionlog/export', {});
+  if (r.content) downloadFile(r.filename, r.content);
+}
+
+// ---- USB BOOT STICK ----
+function startUsbWrite() {
+  const iso = document.getElementById('usbwrite-iso').value;
+  const dev = document.getElementById('usbwrite-device').value;
+  if (!iso || !dev) return;
+  confirm2('USB schreiben', `${iso} wird auf /dev/${dev} geschrieben. ALLE Daten auf dem USB gehen verloren!`, async () => {
+    const r = await api('usbwrite/write', {iso_path: iso, device: dev});
+    if (r.task_id) renderTaskUI('usbwrite-task', r.task_id);
+  });
+}
+
+// ---- SMART DASHBOARD ----
+async function loadSmartDashboard() {
+  const r = await api('smart/dashboard');
+  const container = document.getElementById('smart-cards');
+  if (!r.disks || !r.disks.length) { container.innerHTML = '<p style="color:var(--text-dim)">Keine SMART-Daten</p>'; return; }
+  container.innerHTML = r.disks.map(d => {
+    const color = d.health === 'PASSED' || d.health === 'OK' ? 'var(--success)' : d.health === 'FAILED' ? 'var(--danger)' : 'var(--warning)';
+    const icon = d.health === 'PASSED' || d.health === 'OK' ? '&#10004;' : d.health === 'FAILED' ? '&#10060;' : '&#9888;';
+    return `<div class="stat-card">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div><div class="stat-label">/dev/${d.name}</div><div class="stat-value" style="font-size:16px">${d.model||d.name}</div></div>
+        <div style="font-size:28px">${icon}</div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--text-dim)">
+        ${d.temp ? '<div>Temperatur: <strong>'+d.temp+'</strong></div>' : ''}
+        ${d.power_hours ? '<div>Betriebsstunden: <strong>'+d.power_hours+'h</strong></div>' : ''}
+        ${d.wear_pct !== undefined ? '<div>Wear: <strong>'+d.wear_pct+'%</strong></div>' : ''}
+        ${d.reallocated ? '<div>Reallocated: <strong>'+d.reallocated+'</strong></div>' : ''}
+      </div>
+      <div style="margin-top:8px"><span class="badge ${d.health==='PASSED'||d.health==='OK'?'badge-success':'badge-danger'}">${d.health||'?'}</span> <span class="badge badge-info">${d.type||'?'}</span></div>
+    </div>`;
+  }).join('');
+}
+
+// ---- BITLOCKER ----
+async function checkBitlocker() {
+  const part = document.getElementById('bitlocker-partition').value;
+  if (!part) return;
+  const r = await api('bitlocker', {partition: part});
+  document.getElementById('bitlocker-result').innerHTML = r.encrypted ?
+    '<span class="badge badge-warning">Bitlocker verschluesselt</span><div style="margin-top:8px;font-size:12px;color:var(--text-dim)">' + (r.info||'') + '</div>' :
+    '<span class="badge badge-success">Nicht verschluesselt</span>';
+}
+
+// ---- VNC TEST ----
+async function testVnc() {
+  const host = document.getElementById('vnc-host').value;
+  const port = document.getElementById('vnc-port').value;
+  if (!host) return;
+  document.getElementById('vnc-result').innerHTML = '<div class="spinner"></div> Teste...';
+  const r = await api('vnc/test', {host, port: parseInt(port)});
+  document.getElementById('vnc-result').innerHTML = r.reachable ?
+    '<span style="color:var(--success)">VNC-Server erreichbar auf ' + host + ':' + port + '</span>' :
+    '<span style="color:var(--danger)">VNC-Server nicht erreichbar</span>';
+}
+
+// ---- WINDOWS PRODUCT KEYS ----
+async function loadWinKeys() {
+  const r = await api('winkeys', {});
+  const card = document.getElementById('winkeys-card');
+  card.style.display = 'block';
+  let html = '<div class="info-grid">';
+  if (r.bios_key) html += '<div class="info-label">BIOS/OEM Key</div><div class="info-value" style="font-family:monospace">' + r.bios_key + '</div>';
+  (r.registry_keys||[]).forEach(k => {
+    html += '<div class="info-label">' + k.product + '</div><div class="info-value" style="font-family:monospace">' + k.key + '</div>';
+  });
+  if (!r.bios_key && (!r.registry_keys || !r.registry_keys.length)) html += '<div class="info-label">Status</div><div class="info-value">Keine Keys gefunden</div>';
+  html += '</div>';
+  document.getElementById('winkeys-info').innerHTML = html;
+}
+
+// ---- PXE INFO ----
+async function loadPxeInfo() {
+  const r = await api('serverip');
+  document.getElementById('pxe-info').innerHTML = `
+    <div class="info-grid">
+      <div class="info-label">Server IP</div><div class="info-value">${r.ip}</div>
+      <div class="info-label">Status</div><div class="info-value"><span class="badge badge-info">Verfuegbar (manuell)</span></div>
+      <div class="info-label">Anleitung</div><div class="info-value">DHCP-Server mit next-server=${r.ip} und filename="pxelinux.0" konfigurieren</div>
+    </div>`;
+}
+
+// ---- KEYBOARD SHORTCUTS ----
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  const shortcuts = {
+    '1': 'dashboard', '2': 'sysinfo', '3': 'wiper', '4': 'network',
+    '5': 'disks', '6': 'hwtest', '7': 'bios', '8': 'backup',
+    '9': 'wifi', '0': 'explorer'
+  };
+  if (shortcuts[e.key]) { showPage(shortcuts[e.key]); return; }
+  if (e.key === 'r' || e.key === 'R') { loadSysinfo(); toast('Daten aktualisiert', 'info', 2000); return; }
+  if (e.key === 't' || e.key === 'T') { toggleTheme(); return; }
+  if (e.key === 'l' || e.key === 'L') { toggleLang(); return; }
+  if (e.key === '?' || (e.key === 'h' && !e.ctrlKey)) {
+    toast('Shortcuts: 1-9 Module | R Refresh | T Theme | L Sprache | ? Hilfe', 'info', 6000);
+  }
+});
+
+// Init
+loadSysinfo();
+setInterval(loadSysinfo, 30000);
+api('serverip').then(r => {
+  if(r.url) document.getElementById('qr-url').textContent = r.url;
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_FS_USAGE}=="filesystem", ENV{ID_BUS}=="usb", RUN+="/bin/bash -c '/usr/local/bin/kit-usb-mount.sh add %k'"
+ACTION=="remove", SUBSYSTEM=="block", ENV{ID_BUS}=="usb", RUN+="/bin/bash -c '/usr/local/bin/kit-usb-mount.sh remove %k'"

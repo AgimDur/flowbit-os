@@ -1,0 +1,92 @@
+# Base
+base
+linux
+mkinitcpio
+mkinitcpio-archiso
+syslinux
+
+# Hardware support
+hyperv
+open-vm-tools
+qemu-guest-agent
+virtualbox-guest-utils-nox
+
+# KIT core tools
+bash
+coreutils
+util-linux
+procps-ng
+gawk
+sed
+grep
+findutils
+less
+nano
+dialog
+
+# Wiper module dependencies
+hdparm
+nvme-cli
+sdparm
+smartmontools
+pv
+
+# Network tools
+iproute2
+iputils
+net-tools
+bind
+ethtool
+openssh
+nmap
+networkmanager
+wireless-regdb
+sshpass
+
+# Hardware info
+dmidecode
+lshw
+pciutils
+usbutils
+
+# Filesystem support
+dosfstools
+e2fsprogs
+ntfs-3g
+exfatprogs
+
+# USB mount
+udisks2
+zsh
+curl
+traceroute
+bind
+bc
+efibootmgr
+tpm2-tools
+zstd
+cifs-utils
+nfs-utils
+
+# GUI / Web UI
+xorg-server
+xorg-xinit
+xorg-xset
+xf86-video-vesa
+xf86-video-fbdev
+xf86-video-intel
+xf86-video-amdgpu
+xf86-video-nouveau
+mesa
+openbox
+chromium
+python
+unclutter
+xdotool
+ttf-dejavu
+ttf-liberation
+noto-fonts
+parted
+linux-firmware
+qrencode
+chntpw
