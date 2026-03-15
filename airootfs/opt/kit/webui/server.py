@@ -22,6 +22,12 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8080
+UPDATE_SERVER = "http://10.11.10.114"
+FLOWBIT_VERSION = "3.0.0"
+try:
+    FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
+except Exception:
+    pass
 BASE_DIR = Path(__file__).parent
 STATIC_DIR = BASE_DIR / "static"
 LOG_DIR = Path("/tmp/ittools")
@@ -2542,6 +2548,81 @@ def terminal_exec(command):
         return {"output": str(e), "exit_code": -1}
 
 
+# ---- Update System ----
+
+import hashlib
+import urllib.request
+
+def check_for_update():
+    try:
+        req = urllib.request.Request(f"{UPDATE_SERVER}/manifest.json", headers={"User-Agent": "flowbit-os"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            manifest = json.loads(resp.read().decode())
+        latest = manifest.get("latest", {})
+        latest_ver = latest.get("version", "0.0.0")
+        update_available = latest_ver != FLOWBIT_VERSION
+        return {
+            "current_version": FLOWBIT_VERSION,
+            "latest_version": latest_ver,
+            "update_available": update_available,
+            "iso_url": latest.get("iso", {}).get("url", ""),
+            "iso_size": latest.get("iso", {}).get("size_bytes", 0),
+            "sha256": latest.get("iso", {}).get("sha256", ""),
+            "release_notes": latest.get("release_notes", ""),
+        }
+    except Exception as e:
+        return {"current_version": FLOWBIT_VERSION, "update_available": False, "error": str(e)}
+
+def download_update(task_id, url, expected_sha256):
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "flowbit-os"})
+        resp = urllib.request.urlopen(req, timeout=300)
+        total = int(resp.headers.get("Content-Length", 0))
+        tasks[task_id]["total"] = total
+        iso_path = "/tmp/flowbit-update.iso"
+        sha = hashlib.sha256()
+        downloaded = 0
+        with open(iso_path, "wb") as f:
+            while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                    break
+                f.write(chunk)
+                sha.update(chunk)
+                downloaded += len(chunk)
+                tasks[task_id]["progress"] = downloaded
+        actual_sha = sha.hexdigest()
+        if expected_sha256 and actual_sha != expected_sha256:
+            tasks[task_id] = {"status": "error", "error": f"SHA256 mismatch: {actual_sha}"}
+            os.remove(iso_path)
+        else:
+            tasks[task_id] = {"status": "done", "sha256": actual_sha, "size": downloaded}
+    except Exception as e:
+        tasks[task_id] = {"status": "error", "error": str(e)}
+
+def flash_update(task_id, iso_path, device):
+    try:
+        size = os.path.getsize(iso_path)
+        proc = subprocess.Popen(
+            ["dd", f"if={iso_path}", f"of={device}", "bs=4M", "status=progress", "oflag=sync"],
+            stderr=subprocess.PIPE, stdout=subprocess.PIPE
+        )
+        for line in proc.stderr:
+            line = line.decode(errors="replace").strip()
+            parts = line.split()
+            if parts and parts[0].isdigit():
+                tasks[task_id]["progress"] = int(parts[0])
+                tasks[task_id]["total"] = size
+        proc.wait()
+        if proc.returncode == 0:
+            tasks[task_id] = {"status": "done"}
+            log_action("Update Flash Complete", f"device={device}")
+        else:
+            tasks[task_id] = {"status": "error", "error": f"dd exit code {proc.returncode}"}
+    except Exception as e:
+        tasks[task_id] = {"status": "error", "error": str(e)}
+
+
 # ---- HTTP Handler ----
 
 class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
@@ -2689,9 +2770,21 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/secureboot":
             self.send_json(get_secureboot_info())
 
+        # ---- Update Check ----
+        elif path == "/api/version":
+            self.send_json({"version": FLOWBIT_VERSION})
+        elif path == "/api/update/check":
+            self.send_json(check_for_update())
+        elif path == "/api/update/progress":
+            task_id = params.get("id", [""])[0] if params else ""
+            if task_id in tasks:
+                self.send_json(tasks[task_id])
+            else:
+                self.send_json({"error": "Task nicht gefunden"}, 404)
+
         # ---- Wizard ----
         elif path == "/api/wizard/list":
-            self.send_json({"wizards": {k: {"name": v["name"], "steps_count": len(v["steps"])} for k, v in WIZARDS.items()}})
+            self.send_json({"wizards": [{"id": k, "name": v["name"], "steps": len(v["steps"])} for k, v in WIZARDS.items()]})
         elif path.startswith("/api/wizard/") and path != "/api/wizard/list":
             wiz_name = path.split("/")[-1]
             if wiz_name in WIZARDS:
@@ -2705,7 +2798,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
         # ---- Checklists ----
         elif path == "/api/checklists":
-            self.send_json({"checklists": {k: {"name": v["name"], "items_count": len(v["items"])} for k, v in CHECKLISTS.items()}})
+            self.send_json({"checklists": [{"id": k, "name": v["name"], "items": len(v["items"])} for k, v in CHECKLISTS.items()]})
         elif path.startswith("/api/checklists/") and not path.startswith("/api/checklists/update"):
             cl_name = path.split("/")[-1]
             cl = get_checklist(cl_name)
@@ -3293,6 +3386,34 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 return
             log_action("Terminal", f"cmd={command[:80]}")
             self.send_json(terminal_exec(command))
+
+        # ---- Update ----
+        elif path == "/api/update/download":
+            url = data.get("url", "")
+            sha256 = data.get("sha256", "")
+            if not url:
+                self.send_json({"error": "url required"}, 400)
+                return
+            task_id = str(uuid.uuid4())[:8]
+            tasks[task_id] = {"status": "downloading", "progress": 0, "total": 0}
+            log_action("Update Download", f"url={url}")
+            threading.Thread(target=download_update, args=(task_id, url, sha256), daemon=True).start()
+            self.send_json({"task_id": task_id})
+
+        elif path == "/api/update/flash":
+            device = data.get("device", "")
+            if not device or not re.match(r'^/dev/sd[b-z]$', device):
+                self.send_json({"error": "Ungültiges Gerät"}, 400)
+                return
+            iso_path = "/tmp/flowbit-update.iso"
+            if not os.path.exists(iso_path):
+                self.send_json({"error": "Kein Update heruntergeladen"}, 400)
+                return
+            task_id = str(uuid.uuid4())[:8]
+            tasks[task_id] = {"status": "flashing", "progress": 0}
+            log_action("Update Flash", f"device={device}")
+            threading.Thread(target=flash_update, args=(task_id, iso_path, device), daemon=True).start()
+            self.send_json({"task_id": task_id})
 
         else:
             self.send_json({"error": "Unknown endpoint"}, 404)

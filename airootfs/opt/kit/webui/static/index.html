@@ -372,6 +372,10 @@ body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
         <div class="module-icon" style="background:rgba(168,85,247,0.15);color:#a855f7">⌨️</div>
         <h3>Terminal</h3><p>Shell-Befehle in der Web-UI</p>
       </div>
+      <div class="module-card" onclick="showPage('update');checkUpdate()">
+        <div class="module-icon" style="background:rgba(34,197,94,0.15);color:#22c55e">🔄</div>
+        <h3>Update</h3><p>System aktualisieren</p>
+      </div>
     </div>
     <div class="section-title" style="margin-top:24px">Handy-Zugriff</div>
     <div class="card" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
@@ -1036,6 +1040,34 @@ body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
         <span style="color:var(--accent);padding:8px;font-family:monospace;font-weight:700">$</span>
         <input type="text" id="term-input" placeholder="Befehl eingeben..." style="font-family:monospace" onkeydown="if(event.key==='Enter')execTerminal()">
         <button class="btn btn-sm" onclick="execTerminal()">Senden</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page" id="page-update">
+    <div class="card">
+      <div class="card-title">System-Update</div>
+      <p style="color:var(--text-dim);font-size:13px;margin:8px 0">flowbit OS auf die neueste Version aktualisieren.</p>
+      <div id="update-info" style="margin-top:16px">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+          <span style="font-size:14px">Aktuelle Version:</span>
+          <span id="update-current-ver" style="font-family:monospace;font-weight:700;color:var(--accent)">...</span>
+        </div>
+        <button class="btn" onclick="checkUpdate()">Nach Updates suchen</button>
+      </div>
+      <div id="update-result" style="margin-top:16px;display:none"></div>
+      <div id="update-progress" style="margin-top:16px;display:none">
+        <div style="font-size:14px;margin-bottom:8px" id="update-status-text">Lade herunter...</div>
+        <div style="background:var(--bg-input);border-radius:8px;height:24px;overflow:hidden;border:1px solid var(--border)">
+          <div id="update-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),#6366f1);width:0%;transition:width 0.3s;border-radius:8px"></div>
+        </div>
+        <div style="font-size:12px;color:var(--text-dim);margin-top:4px" id="update-progress-text"></div>
+      </div>
+      <div id="update-flash" style="margin-top:20px;display:none">
+        <div class="card-title" style="font-size:15px">Auf USB-Stick schreiben</div>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Waehle den USB-Stick, auf den das Update geschrieben werden soll. <strong style="color:var(--danger)">ACHTUNG: Alle Daten auf dem Stick werden geloescht!</strong></p>
+        <div id="update-usb-list" style="margin:12px 0"></div>
+        <button class="btn btn-danger" id="update-flash-btn" onclick="flashUpdate()" disabled>Update auf USB schreiben</button>
       </div>
     </div>
   </div>
@@ -2143,12 +2175,20 @@ function renderWizardSteps() {
 function completeWizardStep(stepId, action) {
   wizardProgress[stepId] = true;
   renderWizardSteps();
-  const pageMap = {sysinfo:'sysinfo', smart_dashboard:'disks', wipe:'wiper', hwtest:'hwtest', winkeys:'sysinfo', battery:'sysinfo', export:'sysinfo', bios_reset:'bios'};
+  const pageMap = {sysinfo:'sysinfo', smart_dashboard:'disks', wipe:'wiper', hwtest:'hwtest', winkeys:'sysinfo', battery:'sysinfo', export:'sysinfo', bios_reset:'bios', verify_wipe:'disks'};
+  // Navigate to the relevant page and trigger the action
   if (pageMap[action]) {
-    toast('Wechsle zu ' + pageMap[action], 'info', 2000);
+    showPage(pageMap[action]);
+    toast('Schritt: ' + stepId + ' — Fuehre Aktion aus...', 'info', 3000);
+    // Trigger specific actions
+    if (action === 'sysinfo') loadSysinfo();
+    if (action === 'smart_dashboard') loadSmartDashboard();
+    if (action === 'battery') loadBattery();
+    if (action === 'winkeys') loadWinKeys();
+    if (action === 'export') exportSysinfo();
   }
   if (activeWizard.steps.every(s => wizardProgress[s.id])) {
-    toast('Wizard abgeschlossen!', 'success');
+    toast('Wizard abgeschlossen!', 'success', 5000);
   }
 }
 function closeWizard() {
@@ -2249,11 +2289,126 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
+// ---- Update System ----
+let updateData = null;
+let updateTaskId = null;
+let selectedFlashDevice = null;
+
+async function checkUpdate() {
+  const r = await fetch('/api/update/check').then(r=>r.json());
+  document.getElementById('update-current-ver').textContent = r.current_version || '?';
+  const result = document.getElementById('update-result');
+  result.style.display = 'block';
+  if (r.error) {
+    result.innerHTML = `<div class="card" style="border-color:var(--danger)"><strong>Fehler:</strong> ${r.error}</div>`;
+    return;
+  }
+  if (r.update_available) {
+    updateData = r;
+    const sizeMB = r.iso_size ? (r.iso_size / 1024 / 1024).toFixed(0) + ' MB' : 'unbekannt';
+    result.innerHTML = `
+      <div class="card" style="border-left:3px solid var(--success);background:rgba(34,197,94,0.05)">
+        <h3 style="color:var(--success);margin-bottom:8px">Update verfuegbar: v${r.latest_version}</h3>
+        <p style="font-size:13px;margin-bottom:6px">${r.release_notes || ''}</p>
+        <p style="font-size:12px;color:var(--text-dim)">Groesse: ${sizeMB}</p>
+        <button class="btn" style="margin-top:12px" onclick="startUpdateDownload()">Jetzt herunterladen</button>
+      </div>`;
+  } else {
+    result.innerHTML = `<div class="card" style="border-left:3px solid var(--accent)"><p style="color:var(--accent);font-weight:600">flowbit OS ist aktuell (v${r.current_version})</p></div>`;
+  }
+}
+
+async function startUpdateDownload() {
+  if (!updateData) return;
+  document.getElementById('update-progress').style.display = 'block';
+  const r = await api('update/download', {url: updateData.iso_url, sha256: updateData.sha256});
+  if (r.task_id) {
+    updateTaskId = r.task_id;
+    pollUpdateProgress();
+  }
+}
+
+async function pollUpdateProgress() {
+  if (!updateTaskId) return;
+  const r = await fetch(`/api/update/progress?id=${updateTaskId}`).then(r=>r.json());
+  if (r.status === 'downloading') {
+    const pct = r.total > 0 ? (r.progress / r.total * 100).toFixed(1) : 0;
+    document.getElementById('update-progress-bar').style.width = pct + '%';
+    const dlMB = (r.progress / 1024 / 1024).toFixed(1);
+    const totalMB = (r.total / 1024 / 1024).toFixed(1);
+    document.getElementById('update-progress-text').textContent = `${dlMB} MB / ${totalMB} MB (${pct}%)`;
+    setTimeout(pollUpdateProgress, 500);
+  } else if (r.status === 'done') {
+    document.getElementById('update-progress-bar').style.width = '100%';
+    document.getElementById('update-status-text').textContent = 'Download abgeschlossen!';
+    document.getElementById('update-progress-text').textContent = `SHA256: ${r.sha256 || 'n/a'}`;
+    showToast('Update heruntergeladen', 'success');
+    loadFlashDevices();
+  } else if (r.status === 'error') {
+    document.getElementById('update-status-text').textContent = 'Fehler: ' + (r.error || 'Unbekannt');
+    document.getElementById('update-progress-bar').style.width = '0%';
+    document.getElementById('update-progress-bar').style.background = 'var(--danger)';
+    showToast('Download fehlgeschlagen', 'error');
+  } else if (r.status === 'flashing') {
+    const pct = r.total > 0 ? (r.progress / r.total * 100).toFixed(1) : 0;
+    document.getElementById('update-progress-bar').style.width = pct + '%';
+    document.getElementById('update-status-text').textContent = 'Schreibe auf USB...';
+    document.getElementById('update-progress-text').textContent = `${(r.progress/1024/1024).toFixed(0)} MB / ${(r.total/1024/1024).toFixed(0)} MB`;
+    setTimeout(pollUpdateProgress, 1000);
+  }
+}
+
+async function loadFlashDevices() {
+  document.getElementById('update-flash').style.display = 'block';
+  const r = await fetch('/api/usb/list').then(r=>r.json());
+  const devs = (r.devices || []).filter(d => d.type === 'disk' && d.removable);
+  const container = document.getElementById('update-usb-list');
+  if (!devs.length) {
+    container.innerHTML = '<p style="color:var(--text-dim)">Kein USB-Stick gefunden. Bitte einstecken und erneut pruefen.</p><button class="btn btn-sm btn-outline" onclick="loadFlashDevices()">Erneut suchen</button>';
+    return;
+  }
+  container.innerHTML = devs.map(d => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer" class="card">
+      <input type="radio" name="flash-dev" value="${d.path}" onchange="selectedFlashDevice='${d.path}';document.getElementById('update-flash-btn').disabled=false">
+      <div><strong>${d.path}</strong> — ${d.model||'USB'} (${d.size||'?'})</div>
+    </label>`).join('');
+}
+
+async function flashUpdate() {
+  if (!selectedFlashDevice) return;
+  if (!confirm(`ACHTUNG: Alle Daten auf ${selectedFlashDevice} werden geloescht! Fortfahren?`)) return;
+  document.getElementById('update-progress').style.display = 'block';
+  document.getElementById('update-status-text').textContent = 'Schreibe auf USB...';
+  document.getElementById('update-progress-bar').style.width = '0%';
+  document.getElementById('update-progress-bar').style.background = 'linear-gradient(90deg,var(--accent),#6366f1)';
+  const r = await api('update/flash', {device: selectedFlashDevice});
+  if (r.task_id) {
+    updateTaskId = r.task_id;
+    pollUpdateProgress();
+  }
+}
+
+async function initUpdateCheck() {
+  const r = await fetch('/api/update/check').then(r=>r.json()).catch(()=>null);
+  if (r && r.update_available) {
+    const banner = document.createElement('div');
+    banner.id = 'update-banner';
+    banner.style.cssText = 'background:linear-gradient(90deg,rgba(34,197,94,0.15),rgba(59,130,246,0.1));border:1px solid var(--success);border-radius:8px;padding:10px 16px;margin:12px 24px 0;display:flex;align-items:center;justify-content:space-between;cursor:pointer';
+    banner.innerHTML = `<span>🔄 <strong>flowbit OS v${r.latest_version}</strong> verfuegbar!</span><button class="btn btn-sm" onclick="showPage('update');checkUpdate()">Update</button>`;
+    document.querySelector('.main-content').prepend(banner);
+  }
+}
+
 // Init
 loadSysinfo();
 setInterval(loadSysinfo, 30000);
 api('serverip').then(r => {
   if(r.url) document.getElementById('qr-url').textContent = r.url;
+});
+initUpdateCheck();
+fetch('/api/version').then(r=>r.json()).then(r=>{
+  const el = document.getElementById('update-current-ver');
+  if(el) el.textContent = r.version || '?';
 });
 </script>
 </body>
