@@ -30,52 +30,181 @@ body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background: var(--bg-primary);
   color: var(--text);
-  min-height: 100vh;
-  overflow-x: hidden;
+  height: 100vh;
+  overflow: hidden;
 }
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-primary); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-.header {
-  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
-  border-bottom: 1px solid var(--border);
-  padding: 16px 24px;
-  display: flex; align-items: center; justify-content: space-between;
-  position: sticky; top: 0; z-index: 100;
+/* ---- 3-COLUMN APP LAYOUT ---- */
+.app-layout {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
 }
-.logo { display: flex; align-items: center; gap: 14px; }
-.logo-icon {
-  width: 44px; height: 44px;
-  background: linear-gradient(135deg, var(--accent), #6366f1);
-  border-radius: var(--radius); display: flex; align-items: center; justify-content: center;
-  font-size: 20px; font-weight: 900; color: white;
-  box-shadow: 0 4px 15px var(--accent-glow);
-}
-.logo-text h1 { font-size: 20px; font-weight: 700; color: var(--text-bright); }
-.logo-text span { font-size: 12px; color: var(--text-dim); }
-.header-info { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
-.header-badge {
-  background: var(--bg-input); border: 1px solid var(--border);
-  border-radius: 20px; padding: 5px 12px; font-size: 12px; color: var(--text-dim);
-}
-.header-badge strong { color: var(--text); }
 
-.nav {
-  background: var(--bg-secondary); border-bottom: 1px solid var(--border);
-  padding: 0 24px; display: flex; gap: 2px; overflow-x: auto;
+/* LEFT SIDEBAR */
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 16px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.logo-icon {
+  width: 36px; height: 36px;
+  background: linear-gradient(135deg, var(--accent), #6366f1);
+  border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 900; color: white;
+  box-shadow: 0 3px 10px var(--accent-glow);
+  flex-shrink: 0;
+}
+.sidebar-logo h1 { font-size: 15px; font-weight: 700; color: var(--text-bright); line-height: 1.2; }
+.sidebar-logo span { font-size: 11px; color: var(--text-dim); }
+.sidebar-nav {
+  flex: 1;
+  padding: 8px 8px;
+  display: flex;
+  flex-direction: column;
+}
+.nav-section {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  padding: 14px 8px 4px;
+  font-weight: 600;
 }
 .nav-btn {
-  background: none; border: none; color: var(--text-dim);
-  padding: 12px 16px; font-size: 13px; font-weight: 500; cursor: pointer;
-  border-bottom: 2px solid transparent; transition: all 0.2s;
-  white-space: nowrap; display: flex; align-items: center; gap: 6px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  transition: all 0.15s;
+  white-space: nowrap;
 }
-.nav-btn:hover { color: var(--text); background: rgba(255,255,255,0.03); }
-.nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+.nav-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+.nav-btn.active { background: rgba(59,130,246,0.15); color: var(--accent); }
+.nav-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; display: inline-block; }
+.sidebar-footer {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-version { font-size: 11px; color: var(--text-dim); font-family: monospace; }
 
-.main { padding: 20px 24px; max-width: 1440px; margin: 0 auto; }
+/* HAMBURGER (mobile) */
+.hamburger {
+  display: none;
+  background: none; border: none; color: var(--text); font-size: 20px;
+  cursor: pointer; padding: 4px 8px; border-radius: 4px;
+}
+.hamburger:hover { background: rgba(255,255,255,0.08); }
 
+/* CONTENT AREA (center) */
+.content-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+/* TOP BAR */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 20px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 12px;
+}
+.topbar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.topbar-time { font-size: 13px; color: var(--text-dim); font-family: monospace; }
+.topbar-badge {
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: 20px; padding: 3px 10px; font-size: 12px; color: var(--text);
+}
+
+/* MAIN SCROLL AREA */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+}
+
+/* RIGHT SIDEBAR */
+.right-sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--bg-secondary);
+  border-left: 1px solid var(--border);
+  overflow-y: auto;
+  padding: 16px;
+}
+.right-sidebar-section {
+  margin-bottom: 20px;
+}
+.right-sidebar-section h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.quick-action-btn {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.quick-action-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.07); }
+.right-sidebar-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(42,58,92,0.5);
+  font-size: 12px;
+}
+.right-sidebar-stat span:first-child { color: var(--text-dim); }
+.right-sidebar-stat span:last-child { color: var(--text-bright); font-weight: 600; font-size: 11px; }
+
+/* ---- CARDS / CONTENT ---- */
 .card {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
@@ -86,7 +215,8 @@ body {
 .grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-@media (max-width: 1024px) { .grid-2,.grid-3,.grid-4 { grid-template-columns: 1fr; } }
+@media (max-width: 1200px) { .grid-3 { grid-template-columns: repeat(2,1fr); } }
+@media (max-width: 900px) { .grid-2,.grid-3,.grid-4 { grid-template-columns: 1fr; } }
 
 .stat-card {
   background: var(--bg-card); border: 1px solid var(--border);
@@ -168,7 +298,7 @@ input:focus, select:focus { border-color: var(--accent); }
 
 .confirm-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.7); z-index: 200;
+  background: rgba(0,0,0,0.7); z-index: 500;
   display: flex; align-items: center; justify-content: center;
 }
 .confirm-box {
@@ -198,10 +328,9 @@ body.light {
   --text-bright: #111827;
 }
 body.light .terminal { background: #f8f9fa; color: #1f2937; }
-body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
 
 .toast-container {
-  position: fixed; top: 20px; right: 20px; z-index: 300;
+  position: fixed; top: 20px; right: 20px; z-index: 600;
   display: flex; flex-direction: column; gap: 8px;
 }
 .toast {
@@ -216,80 +345,114 @@ body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
 .toast-warning { background: var(--warning); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
+/* RESPONSIVE */
+@media (max-width: 1024px) {
+  .right-sidebar { display: none; }
+}
 @media (max-width: 768px) {
-  .header { flex-direction: column; gap: 10px; padding: 12px 16px; }
-  .header-info { justify-content: center; }
-  .nav { padding: 0 8px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .nav-btn { padding: 10px 12px; font-size: 12px; }
-  .main { padding: 12px 12px; }
+  .sidebar { position: fixed; left: -240px; top: 0; bottom: 0; z-index: 400; transition: left 0.25s ease; }
+  .sidebar.open { left: 0; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
+  .hamburger { display: block; }
+  .main { padding: 12px; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr !important; }
   .card { padding: 14px; }
-  .info-grid { grid-template-columns: 120px 1fr; }
+  .info-grid { grid-template-columns: 110px 1fr; }
   .input-group { flex-wrap: wrap; }
   .stat-value { font-size: 18px; }
-  .module-card { padding: 14px; }
   .confirm-box { margin: 16px; }
   .terminal { font-size: 11px; max-height: 250px; }
   table { font-size: 12px; display: block; overflow-x: auto; }
   th, td { padding: 6px 8px; }
-}
-@media (max-width: 480px) {
-  .logo-text h1 { font-size: 16px; }
-  .header-badge { font-size: 10px; padding: 3px 8px; }
-  .btn { padding: 7px 12px; font-size: 12px; }
-  .nav-btn { padding: 8px 10px; font-size: 11px; }
+  .topbar-badge { display: none; }
 }
 
 @media print {
-  .header, .nav, .btn, .confirm-overlay { display: none !important; }
+  .sidebar, .right-sidebar, .topbar, .btn, .confirm-overlay { display: none !important; }
+  .app-layout { display: block; }
+  .content-area { overflow: visible; }
+  .main { overflow: visible; padding: 0; }
   .page { display: block !important; }
-  body { background: white; color: black; }
+  body { background: white; color: black; overflow: auto; height: auto; }
   .card { border: 1px solid #ccc; break-inside: avoid; }
 }
 </style>
 </head>
 <body>
 
-<div class="header">
-  <div class="logo">
-    <div class="logo-icon">fb</div>
-    <div class="logo-text"><h1>flowbit OS</h1><span>IT Toolkit</span></div>
-  </div>
-  <div class="header-info">
-    <div class="header-badge"><strong id="h-hostname">...</strong></div>
-    <div class="header-badge"><strong id="h-model">...</strong></div>
-    <div class="header-badge"><strong id="h-serial">...</strong></div>
-    <div class="header-badge" id="h-time"></div>
-    <button class="btn btn-sm btn-outline" onclick="toggleLang()" id="lang-btn">EN</button>
-    <button class="btn btn-sm btn-outline" onclick="toggleTheme()" id="theme-btn" title="Theme">&#127769;</button>
-    <button class="btn btn-sm btn-outline" onclick="exportScreenshot()">Export</button>
-  </div>
-</div>
+<div class="app-layout">
 
-<div class="nav">
-  <button class="nav-btn active" data-page="dashboard">Dashboard</button>
-  <button class="nav-btn" data-page="sysinfo">System Info</button>
-  <button class="nav-btn" data-page="wiper">Wiper</button>
-  <button class="nav-btn" data-page="network">Netzwerk</button>
-  <button class="nav-btn" data-page="disks">Datentraeger</button>
-  <button class="nav-btn" data-page="hwtest">Hardware Test</button>
-  <button class="nav-btn" data-page="bios">BIOS Tools</button>
-  <button class="nav-btn" data-page="backup">Backup/Restore</button>
-  <button class="nav-btn" data-page="wifi">WiFi</button>
-  <button class="nav-btn" data-page="explorer">Datei-Explorer</button>
-  <button class="nav-btn" data-page="passreset">Passwort-Reset</button>
-  <button class="nav-btn" data-page="eventlog">Event-Log</button>
-  <button class="nav-btn" data-page="ssh">SSH</button>
-  <button class="nav-btn" data-page="sessionlog">Log</button>
-  <button class="nav-btn" data-page="partmgr">Partitionen</button>
-  <button class="nav-btn" data-page="antivirus">Antivirus</button>
-  <button class="nav-btn" data-page="registry">Registry</button>
-  <button class="nav-btn" data-page="wizard">Wizard</button>
-  <button class="nav-btn" data-page="terminal">Terminal</button>
-  <button class="nav-btn" data-page="update">Update</button>
-</div>
+  <!-- LEFT SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">fb</div>
+      <div>
+        <h1>flowbit OS</h1>
+        <span>IT Toolkit</span>
+      </div>
+    </div>
 
-<div class="main">
+    <nav class="sidebar-nav">
+      <div class="nav-section">Übersicht</div>
+      <button class="nav-btn active" data-page="dashboard"><span class="nav-icon">🏠</span>Dashboard</button>
+      <button class="nav-btn" data-page="sysinfo"><span class="nav-icon">📊</span>System Info</button>
+
+      <div class="nav-section">Datenträger</div>
+      <button class="nav-btn" data-page="wiper"><span class="nav-icon">🧹</span>Wiper</button>
+      <button class="nav-btn" data-page="disks"><span class="nav-icon">💿</span>SMART / Disks</button>
+      <button class="nav-btn" data-page="partmgr"><span class="nav-icon">💾</span>Partitionen</button>
+      <button class="nav-btn" data-page="backup"><span class="nav-icon">📦</span>Backup / Restore</button>
+
+      <div class="nav-section">Netzwerk</div>
+      <button class="nav-btn" data-page="network"><span class="nav-icon">🌐</span>Netzwerk</button>
+      <button class="nav-btn" data-page="wifi"><span class="nav-icon">📶</span>WiFi</button>
+
+      <div class="nav-section">Hardware</div>
+      <button class="nav-btn" data-page="hwtest"><span class="nav-icon">⚡</span>Hardware Test</button>
+      <button class="nav-btn" data-page="bios"><span class="nav-icon">⚙️</span>BIOS Tools</button>
+
+      <div class="nav-section">Windows</div>
+      <button class="nav-btn" data-page="explorer"><span class="nav-icon">📁</span>Datei-Explorer</button>
+      <button class="nav-btn" data-page="passreset"><span class="nav-icon">🔑</span>Passwort-Reset</button>
+      <button class="nav-btn" data-page="registry"><span class="nav-icon">📝</span>Registry</button>
+      <button class="nav-btn" data-page="eventlog"><span class="nav-icon">📋</span>Event-Log</button>
+
+      <div class="nav-section">Sicherheit</div>
+      <button class="nav-btn" data-page="antivirus"><span class="nav-icon">🛡️</span>Antivirus</button>
+      <button class="nav-btn" data-page="bios" id="nav-secureboot"><span class="nav-icon">🔒</span>Secure Boot</button>
+
+      <div class="nav-section">Tools</div>
+      <button class="nav-btn" data-page="ssh"><span class="nav-icon">🖥️</span>SSH Client</button>
+      <button class="nav-btn" data-page="terminal"><span class="nav-icon">⌨️</span>Terminal</button>
+      <button class="nav-btn" data-page="wizard"><span class="nav-icon">🧙</span>Wizard</button>
+      <button class="nav-btn" data-page="sessionlog"><span class="nav-icon">📜</span>Session-Log</button>
+      <button class="nav-btn" data-page="update"><span class="nav-icon">🔄</span>Update</button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="sidebar-version" id="sidebar-version">v3.1.0</div>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT AREA -->
+  <div class="content-area">
+    <!-- TOP BAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="hamburger" id="hamburger-btn" onclick="document.getElementById('sidebar').classList.toggle('open')" aria-label="Menu">☰</button>
+        <span id="h-time" class="topbar-time"></span>
+        <span class="topbar-badge" id="h-hostname">...</span>
+        <span class="topbar-badge" id="h-model">...</span>
+        <span class="topbar-badge" id="h-serial">...</span>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-sm btn-outline" onclick="toggleLang()" id="lang-btn">EN</button>
+        <button class="btn btn-sm btn-outline" onclick="toggleTheme()" id="theme-btn">🌙</button>
+        <button class="btn btn-sm btn-outline" onclick="exportScreenshot()">Export</button>
+      </div>
+    </header>
+
+    <!-- PAGE CONTENT -->
+    <div class="main">
 
   <!-- DASHBOARD -->
   <div class="page active" id="page-dashboard">
@@ -302,91 +465,6 @@ body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
     <div class="card" id="bandwidth-card" style="margin-top:16px;display:none">
       <div class="card-title">Netzwerk-Bandbreite (Live)</div>
       <div class="grid-2" id="bandwidth-stats" style="margin-top:10px"></div>
-    </div>
-    <div class="section-title" style="margin-top:24px">Module</div>
-    <div class="grid-3">
-      <div class="module-card" onclick="showPage('sysinfo')">
-        <div class="module-icon" style="background:rgba(59,130,246,0.15);color:var(--accent)">&#9783;</div>
-        <h3>System Info</h3><p>Hardware-Inventar, Intune Export, Windows Key</p>
-      </div>
-      <div class="module-card" onclick="showPage('wiper')">
-        <div class="module-icon" style="background:rgba(239,68,68,0.15);color:var(--danger)">&#9249;</div>
-        <h3>Wiper</h3><p>Sichere Datenloeschung, SSD Secure Erase, RAM Scrub</p>
-      </div>
-      <div class="module-card" onclick="showPage('network')">
-        <div class="module-icon" style="background:rgba(16,185,129,0.15);color:var(--accent2)">&#9672;</div>
-        <h3>Netzwerk</h3><p>Ping, DNS, Traceroute, Speedtest, Port-Check</p>
-      </div>
-      <div class="module-card" onclick="showPage('hwtest')">
-        <div class="module-icon" style="background:rgba(168,85,247,0.15);color:#a855f7">&#9889;</div>
-        <h3>Hardware Test</h3><p>RAM, CPU Stresstest, Disk Performance</p>
-      </div>
-      <div class="module-card" onclick="showPage('bios')">
-        <div class="module-icon" style="background:rgba(245,158,11,0.15);color:var(--accent3)">&#9881;</div>
-        <h3>BIOS Tools</h3><p>BIOS Settings, Profile, Win11 Check</p>
-      </div>
-      <div class="module-card" onclick="showPage('backup')">
-        <div class="module-icon" style="background:rgba(34,197,94,0.15);color:var(--success)">&#8693;</div>
-        <h3>Backup / Restore</h3><p>Disk-Images, Clone, Restore mit Checksumme</p>
-      </div>
-      <div class="module-card" onclick="showPage('wifi')">
-        <div class="module-icon" style="background:rgba(59,130,246,0.15);color:var(--accent)">&#128246;</div>
-        <h3>WiFi Manager</h3><p>WLAN scannen, verbinden, verwalten</p>
-      </div>
-      <div class="module-card" onclick="showPage('explorer')">
-        <div class="module-icon" style="background:rgba(168,85,247,0.15);color:#a855f7">&#128194;</div>
-        <h3>Datei-Explorer</h3><p>Partitionen mounten, Dateien durchsuchen, retten</p>
-      </div>
-      <div class="module-card" onclick="showPage('passreset')">
-        <div class="module-icon" style="background:rgba(245,158,11,0.15);color:var(--accent3)">&#128273;</div>
-        <h3>Passwort-Reset</h3><p>Windows-Passwoerter offline zuruecksetzen</p>
-      </div>
-      <div class="module-card" onclick="showPage('eventlog')">
-        <div class="module-icon" style="background:rgba(239,68,68,0.15);color:var(--danger)">&#128203;</div>
-        <h3>Event-Log</h3><p>Windows Event-Logs auslesen</p>
-      </div>
-      <div class="module-card" onclick="showPage('ssh')">
-        <div class="module-icon" style="background:rgba(34,197,94,0.15);color:var(--success)">&#128187;</div>
-        <h3>SSH Client</h3><p>Remote-Befehle auf anderen Geraeten</p>
-      </div>
-      <div class="module-card" onclick="showPage('sessionlog')">
-        <div class="module-icon" style="background:rgba(59,130,246,0.15);color:var(--accent)">&#128220;</div>
-        <h3>Session-Log</h3><p>Aktionen und Ereignisse dieser Sitzung</p>
-      </div>
-      <div class="module-card" onclick="showPage('partmgr')">
-        <div class="module-icon" style="background:rgba(59,130,246,0.15);color:var(--accent)">💾</div>
-        <h3>Partitionen</h3><p>Partitionen erstellen, loeschen, formatieren</p>
-      </div>
-      <div class="module-card" onclick="showPage('antivirus')">
-        <div class="module-icon" style="background:rgba(239,68,68,0.15);color:var(--danger)">🛡️</div>
-        <h3>Antivirus</h3><p>ClamAV Offline-Scan</p>
-      </div>
-      <div class="module-card" onclick="showPage('registry')">
-        <div class="module-icon" style="background:rgba(245,158,11,0.15);color:var(--accent3)">📝</div>
-        <h3>Registry</h3><p>Windows Registry offline lesen</p>
-      </div>
-      <div class="module-card" onclick="showPage('wizard')">
-        <div class="module-icon" style="background:rgba(34,197,94,0.15);color:var(--success)">🧙</div>
-        <h3>Wizard</h3><p>Gefuehrte Workflows & Checklisten</p>
-      </div>
-      <div class="module-card" onclick="showPage('terminal')">
-        <div class="module-icon" style="background:rgba(168,85,247,0.15);color:#a855f7">⌨️</div>
-        <h3>Terminal</h3><p>Shell-Befehle in der Web-UI</p>
-      </div>
-      <div class="module-card" onclick="showPage('update');checkUpdate()">
-        <div class="module-icon" style="background:rgba(34,197,94,0.15);color:#22c55e">🔄</div>
-        <h3>Update</h3><p>System aktualisieren</p>
-      </div>
-    </div>
-    <div class="section-title" style="margin-top:24px">Handy-Zugriff</div>
-    <div class="card" style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-      <img id="qr-img" src="/api/qrcode" alt="QR Code" style="width:180px;height:180px;border-radius:8px;background:white;padding:8px;image-rendering:pixelated">
-      <div>
-        <h3 style="color:var(--text-bright);margin-bottom:8px">Web-UI auf dem Handy oeffnen</h3>
-        <p style="color:var(--text-dim);font-size:14px;font-family:monospace" id="qr-url">Lade...</p>
-        <p style="color:var(--text-dim);font-size:12px;margin-top:6px">QR-Code scannen oder URL eingeben — Handy muss im gleichen Netzwerk sein</p>
-        <button class="btn btn-sm btn-outline" style="margin-top:8px" onclick="navigator.clipboard.writeText(document.getElementById('qr-url').textContent)">URL kopieren</button>
-      </div>
     </div>
     <div class="section-title" style="margin-top:24px">Notizen</div>
     <div class="card">
@@ -1073,7 +1151,42 @@ body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
     </div>
   </div>
 
-</div>
+    </div><!-- end .main -->
+  </div><!-- end .content-area -->
+
+  <!-- RIGHT SIDEBAR -->
+  <aside class="right-sidebar">
+    <div class="right-sidebar-section">
+      <h3>Quick Actions</h3>
+      <button class="quick-action-btn" onclick="exportSysinfo()">📄 Export Report</button>
+      <button class="quick-action-btn" onclick="exportIntune()">📊 Intune CSV</button>
+      <button class="quick-action-btn" onclick="exportAutopilot()">🔑 Autopilot Hash</button>
+      <button class="quick-action-btn" onclick="exportScreenshot()">📸 Screenshot</button>
+      <button class="quick-action-btn" onclick="showPage('wizard')">🧙 Wizard starten</button>
+    </div>
+    <div class="right-sidebar-section">
+      <h3>Handy-Zugriff</h3>
+      <img id="qr-img" src="/api/qrcode" alt="QR" style="width:120px;height:120px;border-radius:8px;background:white;padding:6px;image-rendering:pixelated;display:block;margin:0 auto">
+      <p id="qr-url" style="font-family:monospace;font-size:11px;text-align:center;margin-top:6px;color:var(--text-dim)">Lade...</p>
+    </div>
+    <div class="right-sidebar-section">
+      <h3>System</h3>
+      <div class="right-sidebar-stat">
+        <span>CPU</span><span id="rs-cpu">...</span>
+      </div>
+      <div class="right-sidebar-stat">
+        <span>RAM</span><span id="rs-ram">...</span>
+      </div>
+      <div class="right-sidebar-stat">
+        <span>Disks</span><span id="rs-disks">...</span>
+      </div>
+      <div class="right-sidebar-stat">
+        <span>Net</span><span id="rs-net">...</span>
+      </div>
+    </div>
+  </aside>
+
+</div><!-- end .app-layout -->
 
 <div class="toast-container" id="toast-container"></div>
 
@@ -1267,6 +1380,16 @@ function updateDashboard() {
   const nets = (s.interfaces||[]).filter(i=>i.state==='up');
   document.getElementById('s-net').textContent = nets.length + ' aktiv';
   document.getElementById('s-net-sub').textContent = nets.map(i=>i.ip).join(', ') || 'keine IP';
+
+  // Right sidebar stats
+  const rsCpu = document.getElementById('rs-cpu');
+  const rsRam = document.getElementById('rs-ram');
+  const rsDisks = document.getElementById('rs-disks');
+  const rsNet = document.getElementById('rs-net');
+  if (rsCpu) rsCpu.textContent = cpuShort || '?';
+  if (rsRam) rsRam.textContent = s.ram_total || '?';
+  if (rsDisks) rsDisks.textContent = dc + ' Disk' + (dc!==1?'s':'');
+  if (rsNet) rsNet.textContent = nets.length + ' aktiv';
 
   // Sparkline data collection
   const cpuTemp = parseFloat((s.cpu_temp||'0').replace(/[^0-9.]/g,'')) || 0;
@@ -2422,12 +2545,25 @@ async function initUpdateCheck() {
 loadSysinfo();
 setInterval(loadSysinfo, 30000);
 api('serverip').then(r => {
-  if(r.url) document.getElementById('qr-url').textContent = r.url;
+  if(r.url) {
+    const els = document.querySelectorAll('#qr-url');
+    els.forEach(el => { el.textContent = r.url; });
+  }
 });
 initUpdateCheck();
 fetch('/api/version').then(r=>r.json()).then(r=>{
   const el = document.getElementById('update-current-ver');
   if(el) el.textContent = r.version || '?';
+  const sv = document.getElementById('sidebar-version');
+  if(sv) sv.textContent = r.version || 'v?';
+});
+
+// Mobile sidebar: close on nav click
+document.querySelectorAll('.sidebar .nav-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const sb = document.getElementById('sidebar');
+    if (sb) sb.classList.remove('open');
+  });
 });
 </script>
 </body>
