@@ -2553,25 +2553,20 @@ def terminal_exec(command):
 def get_boot_device():
     """Detect the device flowbit OS was booted from."""
     try:
-        # Check /proc/cmdline for the boot device
-        cmdline = Path("/proc/cmdline").read_text()
-        # archiso boots from a device mounted at /run/archiso/bootmnt
         mnt = run_cmd("findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null", "", timeout=5).strip()
         if mnt:
-            # Get the parent disk (e.g., /dev/sdb1 -> /dev/sdb)
+            # Try parent disk first (e.g., /dev/sdb1 -> /dev/sdb)
             disk = run_cmd(f"lsblk -ndo PKNAME {shlex.quote(mnt)} 2>/dev/null", "", timeout=5).strip()
-            if disk:
-                dev_path = f"/dev/{disk}"
-                # Get device info
-                info = run_cmd(f"lsblk -ndo SIZE,MODEL {shlex.quote(dev_path)} 2>/dev/null", "", timeout=5).strip()
-                parts = info.split(None, 1) if info else []
-                return {
-                    "device": dev_path,
-                    "partition": mnt,
-                    "size": parts[0] if parts else "?",
-                    "model": parts[1].strip() if len(parts) > 1 else "Boot Device",
-                    "found": True
-                }
+            dev_path = f"/dev/{disk}" if disk else mnt  # fallback to source itself (e.g. /dev/sr0, /dev/sda)
+            info = run_cmd(f"lsblk -ndo SIZE,MODEL {shlex.quote(dev_path)} 2>/dev/null", "", timeout=5).strip()
+            parts = info.split(None, 1) if info else []
+            return {
+                "device": dev_path,
+                "partition": mnt,
+                "size": parts[0] if parts else "?",
+                "model": parts[1].strip() if len(parts) > 1 else "Boot Device",
+                "found": True
+            }
         return {"found": False, "error": "Boot-Device nicht erkannt"}
     except Exception as e:
         return {"found": False, "error": str(e)}
