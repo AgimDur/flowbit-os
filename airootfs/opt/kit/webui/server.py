@@ -2066,6 +2066,482 @@ def vnc_test_connection(host, port=5900):
         return {"reachable": False, "error": str(e)}
 
 
+# ---- Network Bandwidth Monitor ----
+
+def get_network_stats():
+    """Read /sys/class/net/*/statistics for rx/tx bytes."""
+    stats = {}
+    for iface in sorted(os.listdir("/sys/class/net")):
+        if iface == "lo":
+            continue
+        rx = read_file(f"/sys/class/net/{iface}/statistics/rx_bytes", "0")
+        tx = read_file(f"/sys/class/net/{iface}/statistics/tx_bytes", "0")
+        state = read_file(f"/sys/class/net/{iface}/operstate", "down")
+        if state == "up":
+            stats[iface] = {"rx_bytes": int(rx), "tx_bytes": int(tx)}
+    return stats
+
+
+# ---- Firmware Update (fwupd) ----
+
+def get_firmware_info():
+    """Get firmware update info via fwupdmgr."""
+    devices = run_cmd("fwupdmgr get-devices --json 2>/dev/null", "{}", timeout=15)
+    try:
+        return json.loads(devices)
+    except:
+        return {"Devices": []}
+
+def check_firmware_updates():
+    updates = run_cmd("fwupdmgr get-updates --json 2>/dev/null", "{}", timeout=30)
+    try:
+        return json.loads(updates)
+    except:
+        return {"Devices": []}
+
+def firmware_update_thread(tid, device_id):
+    """Run firmware update for a specific device."""
+    try:
+        append_output(tid, f"Starte Firmware-Update fuer {device_id}...\n")
+        update_task(tid, progress=10)
+        r = subprocess.run(
+            ["fwupdmgr", "update", device_id, "--no-reboot-check"],
+            capture_output=True, text=True, timeout=300
+        )
+        append_output(tid, r.stdout + r.stderr + "\n")
+        update_task(tid, progress=100)
+        append_output(tid, "Firmware-Update abgeschlossen.\n")
+        finish_task(tid, r.returncode)
+    except Exception as e:
+        append_output(tid, f"Fehler: {e}\n")
+        finish_task(tid, 1)
+
+
+# ---- Partition Manager ----
+
+def get_partition_layout():
+    """Get detailed partition layout."""
+    output = run_cmd("lsblk -J -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,LABEL,UUID,PARTTYPENAME 2>/dev/null", "{}", timeout=10)
+    try:
+        return json.loads(output)
+    except:
+        return {"blockdevices": []}
+
+def create_partition_thread(tid, device, size, fstype, label):
+    """Create a new partition using parted + mkfs."""
+    try:
+        device = sanitize_device(device)
+        label = shlex.quote(label) if label else ""
+        append_output(tid, f"Erstelle Partition auf /dev/{device}...\n")
+        # Get free space
+        free = run_cmd(f"parted /dev/{device} unit MB print free 2>/dev/null | grep 'Free Space' | tail -1", "", timeout=10)
+        append_output(tid, f"Freier Speicher: {free}\n")
+        update_task(tid, progress=30)
+
+        # Create partition (use parted)
+        r = subprocess.run(
+            ["parted", "-s", f"/dev/{device}", "mkpart", "primary", fstype or "ext4", "0%", size or "100%"],
+            capture_output=True, text=True, timeout=30
+        )
+        append_output(tid, r.stdout + r.stderr + "\n")
+        update_task(tid, progress=60)
+
+        # Format if fstype specified
+        if fstype:
+            # Find the new partition name
+            import time as _t
+            _t.sleep(1)
+            new_part = run_cmd(f"lsblk -n -o NAME /dev/{device} | tail -1", "", timeout=5).strip()
+            if new_part:
+                mkfs_cmd = f"mkfs.{fstype}"
+                if fstype == "ntfs":
+                    mkfs_cmd = "mkfs.ntfs -f"
+                elif fstype == "fat32" or fstype == "vfat":
+                    mkfs_cmd = "mkfs.vfat"
+                cmd = f"{mkfs_cmd} /dev/{new_part}"
+                if label:
+                    cmd += f" -L {label}"
+                r2 = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+                append_output(tid, f"Format: {r2.stdout}{r2.stderr}\n")
+
+        update_task(tid, progress=100)
+        append_output(tid, "Partition erstellt.\n")
+        finish_task(tid, 0)
+    except Exception as e:
+        append_output(tid, f"Fehler: {e}\n")
+        finish_task(tid, 1)
+
+def delete_partition(device, partnum):
+    """Delete a partition."""
+    device = sanitize_device(device)
+    result = subprocess.run(
+        ["parted", "-s", f"/dev/{device}", "rm", str(partnum)],
+        capture_output=True, text=True, timeout=15
+    )
+    return {"success": result.returncode == 0, "output": result.stdout + result.stderr}
+
+def resize_partition_thread(tid, device, partnum, size):
+    """Resize partition using parted."""
+    try:
+        device = sanitize_device(device)
+        append_output(tid, f"Resize /dev/{device} Partition {partnum} auf {size}...\n")
+        r = subprocess.run(
+            ["parted", "-s", f"/dev/{device}", "resizepart", str(partnum), size],
+            capture_output=True, text=True, timeout=60
+        )
+        append_output(tid, r.stdout + r.stderr + "\n")
+        append_output(tid, "Resize abgeschlossen.\n")
+        finish_task(tid, r.returncode)
+    except Exception as e:
+        append_output(tid, f"Fehler: {e}\n")
+        finish_task(tid, 1)
+
+def format_partition_thread(tid, partition, fstype, label):
+    """Format a partition with the given filesystem."""
+    try:
+        partition = sanitize_device(partition)
+        append_output(tid, f"Formatiere /dev/{partition} mit {fstype}...\n")
+        update_task(tid, progress=10)
+        mkfs_cmd = f"mkfs.{fstype}"
+        if fstype == "ntfs":
+            mkfs_cmd = "mkfs.ntfs -f"
+        elif fstype in ("fat32", "vfat"):
+            mkfs_cmd = "mkfs.vfat"
+        cmd = f"{mkfs_cmd} /dev/{partition}"
+        if label:
+            cmd += f" -L {shlex.quote(label)}"
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+        append_output(tid, r.stdout + r.stderr + "\n")
+        update_task(tid, progress=100)
+        append_output(tid, "Formatierung abgeschlossen.\n")
+        finish_task(tid, r.returncode)
+    except Exception as e:
+        append_output(tid, f"Fehler: {e}\n")
+        finish_task(tid, 1)
+
+
+# ---- Antivirus Scan (ClamAV) ----
+
+def antivirus_scan_thread(tid, scan_path):
+    """Run ClamAV scan on a path."""
+    try:
+        # Update signatures first
+        append_output(tid, "Aktualisiere Virendefinitionen...\n")
+        update_task(tid, progress=5)
+        r = subprocess.run(["freshclam", "--quiet"], capture_output=True, text=True, timeout=120)
+        if r.returncode != 0:
+            append_output(tid, f"Hinweis: {r.stderr.strip()}\n")
+
+        append_output(tid, f"Scanne {scan_path}...\n")
+        update_task(tid, progress=10)
+
+        proc = subprocess.Popen(
+            ["clamscan", "-r", "--infected", "--bell", scan_path],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        )
+        infected = 0
+        while True:
+            line = proc.stdout.readline()
+            if not line and proc.poll() is not None:
+                break
+            if line:
+                text = line.decode(errors="replace").strip()
+                if "FOUND" in text:
+                    infected += 1
+                append_output(tid, text + "\n")
+
+        append_output(tid, f"\nScan abgeschlossen. {infected} Bedrohung(en) gefunden.\n")
+        finish_task(tid, 0 if infected == 0 else 1)
+    except Exception as e:
+        append_output(tid, f"Fehler: {e}\n")
+        finish_task(tid, 1)
+
+
+# ---- Secure Boot Key Manager ----
+
+def get_secureboot_info():
+    """Get Secure Boot status and keys."""
+    info = {}
+    # Secure Boot state
+    sb_state = "unknown"
+    for f in globmod.glob("/sys/firmware/efi/efivars/SecureBoot-*"):
+        try:
+            with open(f, "rb") as fh:
+                data = fh.read()
+                sb_state = "enabled" if data[-1] == 1 else "disabled"
+        except:
+            pass
+    info["state"] = sb_state
+    info["setup_mode"] = "unknown"
+    for f in globmod.glob("/sys/firmware/efi/efivars/SetupMode-*"):
+        try:
+            with open(f, "rb") as fh:
+                data = fh.read()
+                info["setup_mode"] = "setup" if data[-1] == 1 else "user"
+        except:
+            pass
+
+    # MOK list
+    mok = run_cmd("mokutil --list-enrolled 2>/dev/null | head -30", "", timeout=10)
+    info["mok_keys"] = mok if mok else "Keine MOK Keys oder mokutil nicht verfuegbar"
+
+    # PK/KEK/DB
+    info["pk"] = run_cmd("efi-readvar -v PK 2>/dev/null | head -5", "N/A", timeout=5)
+    info["kek"] = run_cmd("efi-readvar -v KEK 2>/dev/null | head -5", "N/A", timeout=5)
+
+    return info
+
+
+# ---- Boot Repair ----
+
+def boot_repair_thread(tid, device, repair_type):
+    """Repair boot configuration."""
+    try:
+        device = sanitize_device(device)
+        if repair_type == "grub-install":
+            append_output(tid, f"Installiere GRUB auf /dev/{device}...\n")
+            # Mount the target partition
+            mount_point = f"/tmp/ittools_bootrepair_{device}"
+            os.makedirs(mount_point, exist_ok=True)
+            r = subprocess.run(["mount", f"/dev/{device}", mount_point], capture_output=True, text=True, timeout=15)
+            if r.returncode != 0:
+                append_output(tid, f"Mount fehlgeschlagen: {r.stderr}\n")
+                finish_task(tid, 1)
+                return
+
+            update_task(tid, progress=30)
+            # Install GRUB
+            r = subprocess.run(
+                ["grub-install", "--target=x86_64-efi", "--efi-directory=" + mount_point, "--removable"],
+                capture_output=True, text=True, timeout=60
+            )
+            append_output(tid, r.stdout + r.stderr + "\n")
+            update_task(tid, progress=70)
+
+            subprocess.run(["umount", mount_point], capture_output=True, timeout=10)
+            append_output(tid, "GRUB Installation abgeschlossen.\n")
+            finish_task(tid, r.returncode)
+
+        elif repair_type == "fix-efi":
+            append_output(tid, "Repariere EFI Boot-Eintraege...\n")
+            # Re-create EFI boot entry
+            r = subprocess.run(
+                ["efibootmgr", "-c", "-d", f"/dev/{device}", "-l", "\\EFI\\BOOT\\BOOTX64.EFI", "-L", "Boot Repair"],
+                capture_output=True, text=True, timeout=15
+            )
+            append_output(tid, r.stdout + r.stderr + "\n")
+            finish_task(tid, r.returncode)
+
+        elif repair_type == "rebuild-bcd":
+            append_output(tid, "Windows BCD Rebuild wird versucht...\n")
+            append_output(tid, "Hinweis: Voller BCD Rebuild erfordert Windows Recovery Environment.\n")
+            # Try to find and fix Windows bootloader
+            mount_point = f"/tmp/ittools_bootrepair_{device}"
+            os.makedirs(mount_point, exist_ok=True)
+            subprocess.run(["mount", f"/dev/{device}", mount_point], capture_output=True, timeout=15)
+
+            # Check for Windows boot files
+            efi_ms = os.path.join(mount_point, "EFI", "Microsoft", "Boot")
+            if os.path.isdir(efi_ms):
+                append_output(tid, f"Windows Boot-Dateien gefunden in {efi_ms}\n")
+                bcd = os.path.join(efi_ms, "BCD")
+                if os.path.isfile(bcd):
+                    append_output(tid, "BCD Datei vorhanden.\n")
+                else:
+                    append_output(tid, "BCD Datei FEHLT!\n")
+            else:
+                append_output(tid, "Keine Windows Boot-Dateien gefunden.\n")
+
+            subprocess.run(["umount", mount_point], capture_output=True, timeout=10)
+            finish_task(tid, 0)
+    except Exception as e:
+        append_output(tid, f"Fehler: {e}\n")
+        finish_task(tid, 1)
+
+
+# ---- Registry Editor ----
+
+def registry_list_keys(hive_path, key_path):
+    """List registry keys using reged from chntpw package."""
+    safe_hive = shlex.quote(hive_path)
+    safe_key = shlex.quote(key_path)
+    output = run_cmd(f"reged -x {safe_hive} {safe_key} 2>/dev/null | head -100", "", timeout=10)
+    return {"path": key_path, "output": output}
+
+def registry_export(partition, hive_name):
+    """Export a registry hive."""
+    mount_point = f"/tmp/ittools_mnt/{sanitize_device(partition)}"
+    hive_paths = {
+        "SOFTWARE": "Windows/System32/config/SOFTWARE",
+        "SYSTEM": "Windows/System32/config/SYSTEM",
+        "SAM": "Windows/System32/config/SAM",
+        "SECURITY": "Windows/System32/config/SECURITY",
+    }
+    if hive_name not in hive_paths:
+        return {"error": "Unbekannte Hive"}
+    full_path = os.path.join(mount_point, hive_paths[hive_name])
+    if not os.path.isfile(full_path):
+        return {"error": f"Hive nicht gefunden: {full_path}"}
+    output = run_cmd(f"reged -x {shlex.quote(full_path)} '\\' 2>/dev/null | head -500", "", timeout=15)
+    return {"hive": hive_name, "path": full_path, "content": output}
+
+
+# ---- Wizard/Workflow ----
+
+WIZARDS = {
+    "pc-aufbereiten": {
+        "name": "PC aufbereiten",
+        "steps": [
+            {"id": "sysinfo", "name": "System-Info erfassen", "action": "sysinfo", "auto": True},
+            {"id": "smartcheck", "name": "SMART pruefen", "action": "smart_dashboard", "auto": True},
+            {"id": "wipe", "name": "Datentraeger loeschen", "action": "wipe", "auto": False},
+            {"id": "verify", "name": "Wipe verifizieren", "action": "verify_wipe", "auto": True},
+            {"id": "export", "name": "Report exportieren", "action": "export", "auto": True},
+        ]
+    },
+    "pc-aufnahme": {
+        "name": "PC-Aufnahme / Inventar",
+        "steps": [
+            {"id": "sysinfo", "name": "System-Info erfassen", "action": "sysinfo", "auto": True},
+            {"id": "winkey", "name": "Windows Key auslesen", "action": "winkeys", "auto": True},
+            {"id": "smart", "name": "Disk-Gesundheit", "action": "smart_dashboard", "auto": True},
+            {"id": "battery", "name": "Batterie pruefen", "action": "battery", "auto": True},
+            {"id": "export", "name": "Report speichern", "action": "export", "auto": True},
+        ]
+    },
+    "pc-rueckgabe": {
+        "name": "PC-Rueckgabe",
+        "steps": [
+            {"id": "sysinfo", "name": "System-Info erfassen", "action": "sysinfo", "auto": True},
+            {"id": "hwtest", "name": "Hardware-Test", "action": "hwtest", "auto": False},
+            {"id": "wipe", "name": "Sichere Loeschung", "action": "wipe", "auto": False},
+            {"id": "biosreset", "name": "BIOS Reset", "action": "bios_reset", "auto": False},
+            {"id": "export", "name": "Protokoll exportieren", "action": "export", "auto": True},
+        ]
+    }
+}
+
+
+# ---- Notes ----
+
+NOTES_DIR = Path("/tmp/ittools/notes")
+NOTES_DIR.mkdir(parents=True, exist_ok=True)
+
+def get_notes():
+    notes = []
+    for f in sorted(NOTES_DIR.glob("*.json")):
+        try:
+            notes.append(json.loads(f.read_text()))
+        except:
+            pass
+    return notes
+
+def save_note(title, content, device_serial=""):
+    note_id = str(uuid.uuid4())[:8]
+    note = {
+        "id": note_id,
+        "title": title,
+        "content": content,
+        "device_serial": device_serial,
+        "created": time.strftime("%d.%m.%Y %H:%M:%S"),
+        "timestamp": time.time()
+    }
+    (NOTES_DIR / f"{note_id}.json").write_text(json.dumps(note))
+    return note
+
+def delete_note(note_id):
+    f = NOTES_DIR / f"{note_id}.json"
+    if f.exists():
+        f.unlink()
+        return True
+    return False
+
+
+# ---- Checklists ----
+
+CHECKLISTS = {
+    "pc-aufnahme": {
+        "name": "PC-Aufnahme Checkliste",
+        "items": [
+            "Seriennummer notiert",
+            "Modell/Hersteller erfasst",
+            "Windows Key ausgelesen",
+            "BIOS Version geprueft",
+            "SMART Status OK",
+            "Batterie Zustand geprueft",
+            "RAM/CPU Info erfasst",
+            "Report exportiert"
+        ]
+    },
+    "pc-rueckgabe": {
+        "name": "PC-Rueckgabe Checkliste",
+        "items": [
+            "Daten gesichert",
+            "Disk gewiped",
+            "Wipe-Protokoll erstellt",
+            "BIOS auf Standard",
+            "BIOS Passwort entfernt",
+            "Hardware geprueft",
+            "Zubehoer vollstaendig",
+            "Protokoll unterschrieben"
+        ]
+    },
+    "pc-ausgabe": {
+        "name": "PC-Ausgabe Checkliste",
+        "items": [
+            "Seriennummer erfasst",
+            "Autopilot Hash exportiert",
+            "Windows installiert",
+            "Updates installiert",
+            "Treiber aktuell",
+            "Benutzer eingerichtet",
+            "Uebergabe dokumentiert"
+        ]
+    }
+}
+
+checklist_state = {}
+
+def get_checklist(name):
+    if name not in CHECKLISTS:
+        return None
+    state = checklist_state.get(name, {})
+    cl = CHECKLISTS[name].copy()
+    cl["checked"] = state
+    return cl
+
+def update_checklist(name, item_index, checked):
+    if name not in checklist_state:
+        checklist_state[name] = {}
+    checklist_state[name][str(item_index)] = checked
+
+
+# ---- Terminal ----
+
+def terminal_exec(command):
+    """Execute a shell command and return output."""
+    # Security: block dangerous commands
+    blocked = ["rm -rf /", "mkfs /dev/sd", "dd if=/dev/zero of=/dev/sd", "> /dev/sd"]
+    for b in blocked:
+        if b in command:
+            return {"output": "BLOCKED: Dieser Befehl ist aus Sicherheitsgruenden gesperrt.", "exit_code": -1}
+
+    try:
+        result = subprocess.run(
+            command, shell=True,
+            capture_output=True, text=True, timeout=30,
+            cwd="/tmp"
+        )
+        return {
+            "output": result.stdout + result.stderr,
+            "exit_code": result.returncode
+        }
+    except subprocess.TimeoutExpired:
+        return {"output": "Timeout (30s)", "exit_code": -1}
+    except Exception as e:
+        return {"output": str(e), "exit_code": -1}
+
+
 # ---- HTTP Handler ----
 
 class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
@@ -2190,6 +2666,54 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                         self.wfile.write(chunk)
             except Exception as e:
                 self.send_json({"error": str(e)}, 500)
+        # ---- Network Bandwidth Monitor ----
+        elif path == "/api/netmonitor":
+            self.send_json(get_network_stats())
+
+        # ---- Firmware ----
+        elif path == "/api/firmware/devices":
+            self.send_json(get_firmware_info())
+        elif path == "/api/firmware/updates":
+            self.send_json(check_firmware_updates())
+
+        # ---- Partition Manager ----
+        elif path == "/api/partmgr/layout":
+            self.send_json(get_partition_layout())
+
+        # ---- Antivirus ----
+        elif path == "/api/antivirus/status":
+            installed = run_cmd("which clamscan 2>/dev/null", "", timeout=5)
+            self.send_json({"installed": bool(installed), "path": installed})
+
+        # ---- Secure Boot ----
+        elif path == "/api/secureboot":
+            self.send_json(get_secureboot_info())
+
+        # ---- Wizard ----
+        elif path == "/api/wizard/list":
+            self.send_json({"wizards": {k: {"name": v["name"], "steps_count": len(v["steps"])} for k, v in WIZARDS.items()}})
+        elif path.startswith("/api/wizard/") and path != "/api/wizard/list":
+            wiz_name = path.split("/")[-1]
+            if wiz_name in WIZARDS:
+                self.send_json(WIZARDS[wiz_name])
+            else:
+                self.send_json({"error": "Wizard nicht gefunden"}, 404)
+
+        # ---- Notes ----
+        elif path == "/api/notes":
+            self.send_json({"notes": get_notes()})
+
+        # ---- Checklists ----
+        elif path == "/api/checklists":
+            self.send_json({"checklists": {k: {"name": v["name"], "items_count": len(v["items"])} for k, v in CHECKLISTS.items()}})
+        elif path.startswith("/api/checklists/") and not path.startswith("/api/checklists/update"):
+            cl_name = path.split("/")[-1]
+            cl = get_checklist(cl_name)
+            if cl:
+                self.send_json(cl)
+            else:
+                self.send_json({"error": "Checkliste nicht gefunden"}, 404)
+
         else:
             super().do_GET()
 
@@ -2605,6 +3129,170 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"error": "Host required"}, 400)
                 return
             self.send_json(vnc_test_connection(host, port))
+
+        # ---- Firmware Update ----
+        elif path == "/api/firmware/update":
+            device_id = data.get("device_id", "")
+            if not device_id:
+                self.send_json({"error": "device_id required"}, 400)
+                return
+            log_action("Firmware Update", f"device={device_id}")
+            tid = new_task(f"Firmware Update {device_id}")
+            threading.Thread(target=firmware_update_thread, args=(tid, device_id), daemon=True).start()
+            self.send_json({"task_id": tid})
+
+        # ---- Partition Manager ----
+        elif path == "/api/partmgr/create":
+            device = data.get("device", "")
+            size = data.get("size", "100%")
+            fstype = data.get("fstype", "")
+            label = data.get("label", "")
+            if not device:
+                self.send_json({"error": "device required"}, 400)
+                return
+            log_action("Partition Create", f"device={device} size={size} fstype={fstype}")
+            tid = new_task(f"Partition erstellen /dev/{device}")
+            threading.Thread(target=create_partition_thread, args=(tid, device, size, fstype, label), daemon=True).start()
+            self.send_json({"task_id": tid})
+
+        elif path == "/api/partmgr/delete":
+            device = data.get("device", "")
+            partnum = data.get("partnum", "")
+            if not device or not partnum:
+                self.send_json({"error": "device and partnum required"}, 400)
+                return
+            log_action("Partition Delete", f"device={device} partnum={partnum}")
+            self.send_json(delete_partition(device, partnum))
+
+        elif path == "/api/partmgr/resize":
+            device = data.get("device", "")
+            partnum = data.get("partnum", "")
+            size = data.get("size", "")
+            if not device or not partnum or not size:
+                self.send_json({"error": "device, partnum and size required"}, 400)
+                return
+            log_action("Partition Resize", f"device={device} partnum={partnum} size={size}")
+            tid = new_task(f"Partition Resize /dev/{device} #{partnum}")
+            threading.Thread(target=resize_partition_thread, args=(tid, device, partnum, size), daemon=True).start()
+            self.send_json({"task_id": tid})
+
+        elif path == "/api/partmgr/format":
+            partition = data.get("partition", "")
+            fstype = data.get("fstype", "")
+            label = data.get("label", "")
+            if not partition or not fstype:
+                self.send_json({"error": "partition and fstype required"}, 400)
+                return
+            log_action("Partition Format", f"partition={partition} fstype={fstype}")
+            tid = new_task(f"Format /dev/{partition} ({fstype})")
+            threading.Thread(target=format_partition_thread, args=(tid, partition, fstype, label), daemon=True).start()
+            self.send_json({"task_id": tid})
+
+        # ---- Antivirus ----
+        elif path == "/api/antivirus/scan":
+            scan_path = data.get("path", "/")
+            safe_path = sanitize_path(scan_path)
+            if not safe_path:
+                self.send_json({"error": "Invalid path"}, 400)
+                return
+            log_action("Antivirus Scan", f"path={safe_path}")
+            tid = new_task(f"ClamAV Scan {safe_path}")
+            threading.Thread(target=antivirus_scan_thread, args=(tid, safe_path), daemon=True).start()
+            self.send_json({"task_id": tid})
+
+        # ---- Boot Repair ----
+        elif path == "/api/bootrepair/repair":
+            device = data.get("device", "")
+            repair_type = data.get("type", "")
+            if not device or repair_type not in ("grub-install", "fix-efi", "rebuild-bcd"):
+                self.send_json({"error": "device and valid type required"}, 400)
+                return
+            log_action("Boot Repair", f"device={device} type={repair_type}")
+            tid = new_task(f"Boot Repair {repair_type} /dev/{device}")
+            threading.Thread(target=boot_repair_thread, args=(tid, device, repair_type), daemon=True).start()
+            self.send_json({"task_id": tid})
+
+        # ---- Registry Editor ----
+        elif path == "/api/registry/browse":
+            partition = data.get("partition", "")
+            hive = data.get("hive", "")
+            key_path = data.get("path", "\\")
+            if not partition or not hive:
+                self.send_json({"error": "partition and hive required"}, 400)
+                return
+            mount_point = f"/tmp/ittools_mnt/{sanitize_device(partition)}"
+            hive_paths = {
+                "SOFTWARE": "Windows/System32/config/SOFTWARE",
+                "SYSTEM": "Windows/System32/config/SYSTEM",
+                "SAM": "Windows/System32/config/SAM",
+                "SECURITY": "Windows/System32/config/SECURITY",
+            }
+            if hive not in hive_paths:
+                self.send_json({"error": "Unbekannte Hive"}, 400)
+                return
+            full_path = os.path.join(mount_point, hive_paths[hive])
+            log_action("Registry Browse", f"hive={hive} path={key_path}")
+            self.send_json(registry_list_keys(full_path, key_path))
+
+        elif path == "/api/registry/export":
+            partition = data.get("partition", "")
+            hive = data.get("hive", "")
+            if not partition or not hive:
+                self.send_json({"error": "partition and hive required"}, 400)
+                return
+            log_action("Registry Export", f"partition={partition} hive={hive}")
+            self.send_json(registry_export(partition, hive))
+
+        # ---- Notes ----
+        elif path == "/api/notes/save":
+            title = data.get("title", "")
+            content = data.get("content", "")
+            device_serial = data.get("device_serial", "")
+            if not title:
+                self.send_json({"error": "title required"}, 400)
+                return
+            log_action("Note Save", f"title={title}")
+            self.send_json(save_note(title, content, device_serial))
+
+        elif path == "/api/notes/delete":
+            note_id = data.get("id", "")
+            if not note_id:
+                self.send_json({"error": "id required"}, 400)
+                return
+            log_action("Note Delete", f"id={note_id}")
+            self.send_json({"deleted": delete_note(note_id)})
+
+        elif path == "/api/notes/export":
+            notes = get_notes()
+            lines = ["flowbit OS Notizen Export", "=" * 40, ""]
+            for n in notes:
+                lines.append(f"[{n.get('created', '')}] {n.get('title', '')}")
+                if n.get('device_serial'):
+                    lines.append(f"  Geraet: {n['device_serial']}")
+                lines.append(f"  {n.get('content', '')}")
+                lines.append("")
+            content = "\n".join(lines)
+            self.send_json({"filename": f"notes_{time.strftime('%Y%m%d_%H%M%S')}.txt", "content": content})
+
+        # ---- Checklists ----
+        elif path == "/api/checklists/update":
+            name = data.get("name", "")
+            item_index = data.get("item_index", None)
+            checked = data.get("checked", False)
+            if not name or item_index is None:
+                self.send_json({"error": "name and item_index required"}, 400)
+                return
+            update_checklist(name, item_index, checked)
+            self.send_json({"success": True})
+
+        # ---- Terminal ----
+        elif path == "/api/terminal":
+            command = data.get("command", "")
+            if not command:
+                self.send_json({"error": "command required"}, 400)
+                return
+            log_action("Terminal", f"cmd={command[:80]}")
+            self.send_json(terminal_exec(command))
 
         else:
             self.send_json({"error": "Unknown endpoint"}, 404)

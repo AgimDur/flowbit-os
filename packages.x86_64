@@ -90,3 +90,8 @@ parted
 linux-firmware
 qrencode
 chntpw
+clamav
+fwupd
+grub
+mokutil
+efitools
