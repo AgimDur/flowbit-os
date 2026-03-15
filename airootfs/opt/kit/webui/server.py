@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 PORT = 8080
 UPDATE_SERVER = "http://10.11.10.114"
-FLOWBIT_VERSION = "3.1.0"
+FLOWBIT_VERSION = "3.2.1"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -2655,17 +2655,29 @@ def flash_update(task_id, iso_path, device):
     try:
         safe_dev = sanitize_device(device)
         size = os.path.getsize(iso_path)
+        with tasks_lock:
+            tasks[task_id] = {"status": "flashing", "progress": 0, "total": size}
+        # Use pv for accurate progress: pv -n outputs percentage to stderr
         proc = subprocess.Popen(
-            ["dd", f"if={iso_path}", f"of=/dev/{safe_dev}", "bs=4M", "status=progress", "oflag=sync"],
-            stderr=subprocess.PIPE, stdout=subprocess.PIPE
+            f"pv -n '{iso_path}' 2>&1 | dd of=/dev/{safe_dev} bs=4M oflag=sync 2>/dev/null",
+            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        for line in proc.stderr:
-            line = line.decode(errors="replace").strip()
-            parts = line.split()
-            if parts and parts[0].isdigit():
-                with tasks_lock:
-                    tasks[task_id]["progress"] = int(parts[0])
-                    tasks[task_id]["total"] = size
+        # pv -n piped through 2>&1 means percentage lines come on stdout
+        buf = b""
+        while True:
+            chunk = proc.stdout.read(1)
+            if not chunk:
+                break
+            if chunk == b"\n" or chunk == b"\r":
+                line = buf.decode(errors="replace").strip()
+                buf = b""
+                if line.isdigit():
+                    pct = int(line)
+                    with tasks_lock:
+                        tasks[task_id]["progress"] = int(size * pct / 100)
+                        tasks[task_id]["total"] = size
+            else:
+                buf += chunk
         proc.wait()
         if proc.returncode == 0:
             with tasks_lock:
@@ -2673,7 +2685,7 @@ def flash_update(task_id, iso_path, device):
             log_action("Update Flash Complete", f"device=/dev/{safe_dev}")
         else:
             with tasks_lock:
-                tasks[task_id] = {"status": "error", "error": f"dd exit code {proc.returncode}"}
+                tasks[task_id] = {"status": "error", "error": f"Flash exit code {proc.returncode}"}
     except Exception as e:
         with tasks_lock:
             tasks[task_id] = {"status": "error", "error": str(e)}
