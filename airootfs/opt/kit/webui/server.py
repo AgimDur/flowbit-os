@@ -2553,11 +2553,33 @@ def terminal_exec(command):
 def get_boot_device():
     """Detect the device flowbit OS was booted from."""
     try:
+        # Method 1: Check if bootmnt is still mounted
         mnt = run_cmd("findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null", "", timeout=5).strip()
+
+        # Method 2: Find by FLOWBIT label (archiso may have unmounted after copytoram)
+        if not mnt:
+            mnt = run_cmd("blkid -L FLOWBIT_202603 2>/dev/null", "", timeout=5).strip()
+        if not mnt:
+            # Search blkid for any FLOWBIT label
+            blkid_out = run_cmd("blkid 2>/dev/null", "", timeout=5)
+            for line in blkid_out.splitlines():
+                if "FLOWBIT" in line:
+                    mnt = line.split(":")[0].strip()
+                    break
+
+        # Method 3: Check cmdline for archisosearchuuid and find device
+        if not mnt:
+            cmdline = Path("/proc/cmdline").read_text()
+            for part in cmdline.split():
+                if part.startswith("archisosearchuuid="):
+                    uid = part.split("=", 1)[1]
+                    mnt = run_cmd(f"blkid -U {shlex.quote(uid)} 2>/dev/null", "", timeout=5).strip()
+                    break
+
         if mnt:
-            # Try parent disk first (e.g., /dev/sdb1 -> /dev/sdb)
+            # Get parent disk (e.g., /dev/sdb1 -> /dev/sdb)
             disk = run_cmd(f"lsblk -ndo PKNAME {shlex.quote(mnt)} 2>/dev/null", "", timeout=5).strip()
-            dev_path = f"/dev/{disk}" if disk else mnt  # fallback to source itself (e.g. /dev/sr0, /dev/sda)
+            dev_path = f"/dev/{disk}" if disk else mnt
             info = run_cmd(f"lsblk -ndo SIZE,MODEL {shlex.quote(dev_path)} 2>/dev/null", "", timeout=5).strip()
             parts = info.split(None, 1) if info else []
             return {
