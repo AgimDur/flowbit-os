@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, urlparse
 
 PORT = 8080
 UPDATE_SERVER = "http://10.11.10.114"
-FLOWBIT_VERSION = "3.0.0"
+FLOWBIT_VERSION = "3.1.0"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -2578,7 +2578,8 @@ def download_update(task_id, url, expected_sha256):
         req = urllib.request.Request(url, headers={"User-Agent": "flowbit-os"})
         resp = urllib.request.urlopen(req, timeout=300)
         total = int(resp.headers.get("Content-Length", 0))
-        tasks[task_id]["total"] = total
+        with tasks_lock:
+            tasks[task_id]["total"] = total
         iso_path = "/tmp/flowbit-update.iso"
         sha = hashlib.sha256()
         downloaded = 0
@@ -2590,37 +2591,46 @@ def download_update(task_id, url, expected_sha256):
                 f.write(chunk)
                 sha.update(chunk)
                 downloaded += len(chunk)
-                tasks[task_id]["progress"] = downloaded
+                with tasks_lock:
+                    tasks[task_id]["progress"] = downloaded
         actual_sha = sha.hexdigest()
         if expected_sha256 and actual_sha != expected_sha256:
-            tasks[task_id] = {"status": "error", "error": f"SHA256 mismatch: {actual_sha}"}
+            with tasks_lock:
+                tasks[task_id] = {"status": "error", "error": f"SHA256 mismatch: {actual_sha}"}
             os.remove(iso_path)
         else:
-            tasks[task_id] = {"status": "done", "sha256": actual_sha, "size": downloaded}
+            with tasks_lock:
+                tasks[task_id] = {"status": "done", "sha256": actual_sha, "size": downloaded}
     except Exception as e:
-        tasks[task_id] = {"status": "error", "error": str(e)}
+        with tasks_lock:
+            tasks[task_id] = {"status": "error", "error": str(e)}
 
 def flash_update(task_id, iso_path, device):
     try:
+        safe_dev = sanitize_device(device)
         size = os.path.getsize(iso_path)
         proc = subprocess.Popen(
-            ["dd", f"if={iso_path}", f"of={device}", "bs=4M", "status=progress", "oflag=sync"],
+            ["dd", f"if={iso_path}", f"of=/dev/{safe_dev}", "bs=4M", "status=progress", "oflag=sync"],
             stderr=subprocess.PIPE, stdout=subprocess.PIPE
         )
         for line in proc.stderr:
             line = line.decode(errors="replace").strip()
             parts = line.split()
             if parts and parts[0].isdigit():
-                tasks[task_id]["progress"] = int(parts[0])
-                tasks[task_id]["total"] = size
+                with tasks_lock:
+                    tasks[task_id]["progress"] = int(parts[0])
+                    tasks[task_id]["total"] = size
         proc.wait()
         if proc.returncode == 0:
-            tasks[task_id] = {"status": "done"}
-            log_action("Update Flash Complete", f"device={device}")
+            with tasks_lock:
+                tasks[task_id] = {"status": "done"}
+            log_action("Update Flash Complete", f"device=/dev/{safe_dev}")
         else:
-            tasks[task_id] = {"status": "error", "error": f"dd exit code {proc.returncode}"}
+            with tasks_lock:
+                tasks[task_id] = {"status": "error", "error": f"dd exit code {proc.returncode}"}
     except Exception as e:
-        tasks[task_id] = {"status": "error", "error": str(e)}
+        with tasks_lock:
+            tasks[task_id] = {"status": "error", "error": str(e)}
 
 
 # ---- HTTP Handler ----
@@ -2775,8 +2785,9 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"version": FLOWBIT_VERSION})
         elif path == "/api/update/check":
             self.send_json(check_for_update())
-        elif path == "/api/update/progress":
-            task_id = params.get("id", [""])[0] if params else ""
+        elif path.startswith("/api/update/progress"):
+            qs = parse_qs(urlparse(self.path).query)
+            task_id = qs.get("id", [""])[0]
             if task_id in tasks:
                 self.send_json(tasks[task_id])
             else:

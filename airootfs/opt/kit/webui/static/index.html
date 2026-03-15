@@ -286,6 +286,7 @@ body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
   <button class="nav-btn" data-page="registry">Registry</button>
   <button class="nav-btn" data-page="wizard">Wizard</button>
   <button class="nav-btn" data-page="terminal">Terminal</button>
+  <button class="nav-btn" data-page="update">Update</button>
 </div>
 
 <div class="main">
@@ -1099,7 +1100,7 @@ const i18n = {
     dashboard: 'Dashboard', sysinfo: 'System Info', wiper: 'Wiper', network: 'Netzwerk',
     disks: 'Datentraeger', hwtest: 'Hardware Test', bios: 'BIOS Tools', backup: 'Backup/Restore',
     wifi: 'WiFi', explorer: 'Datei-Explorer', passreset: 'Passwort-Reset', eventlog: 'Event-Log', ssh: 'SSH', sessionlog: 'Log',
-    partmgr: 'Partitionen', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal',
+    partmgr: 'Partitionen', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal', update: 'Update',
     export_txt: 'Export TXT', refresh: 'Aktualisieren', connect: 'Verbinden', scan: 'Scannen',
     start: 'Starten', cancel: 'Abbrechen', execute: 'Ausfuehren', search: 'Suchen',
     phone_access: 'Handy-Zugriff', modules: 'Module', confirmation: 'Bestaetigung',
@@ -1109,7 +1110,7 @@ const i18n = {
     dashboard: 'Dashboard', sysinfo: 'System Info', wiper: 'Wiper', network: 'Network',
     disks: 'Disks', hwtest: 'Hardware Test', bios: 'BIOS Tools', backup: 'Backup/Restore',
     wifi: 'WiFi', explorer: 'File Explorer', passreset: 'Password Reset', eventlog: 'Event Log', ssh: 'SSH', sessionlog: 'Log',
-    partmgr: 'Partitions', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal',
+    partmgr: 'Partitions', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal', update: 'Update',
     export_txt: 'Export TXT', refresh: 'Refresh', connect: 'Connect', scan: 'Scan',
     start: 'Start', cancel: 'Cancel', execute: 'Execute', search: 'Search',
     phone_access: 'Phone Access', modules: 'Modules', confirmation: 'Confirmation',
@@ -2162,7 +2163,8 @@ function renderWizardSteps() {
   let html = '';
   activeWizard.steps.forEach((s, i) => {
     const done = wizardProgress[s.id];
-    const current = !done && !Object.values(wizardProgress).includes(undefined) || i === Object.keys(wizardProgress).length;
+    const doneCount = activeWizard.steps.filter(st => wizardProgress[st.id]).length;
+    const current = !done && i === doneCount;
     html += `<div style="display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--border);${current?'background:rgba(59,130,246,0.05)':''}">
       <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;
         ${done?'background:var(--success);color:white':'background:var(--bg-input);color:var(--text-dim)'}">${done?'✓':i+1}</div>
@@ -2342,13 +2344,13 @@ async function pollUpdateProgress() {
     document.getElementById('update-progress-bar').style.width = '100%';
     document.getElementById('update-status-text').textContent = 'Download abgeschlossen!';
     document.getElementById('update-progress-text').textContent = `SHA256: ${r.sha256 || 'n/a'}`;
-    showToast('Update heruntergeladen', 'success');
+    toast('Update heruntergeladen', 'success');
     loadFlashDevices();
   } else if (r.status === 'error') {
     document.getElementById('update-status-text').textContent = 'Fehler: ' + (r.error || 'Unbekannt');
     document.getElementById('update-progress-bar').style.width = '0%';
     document.getElementById('update-progress-bar').style.background = 'var(--danger)';
-    showToast('Download fehlgeschlagen', 'error');
+    toast('Download fehlgeschlagen', 'error');
   } else if (r.status === 'flashing') {
     const pct = r.total > 0 ? (r.progress / r.total * 100).toFixed(1) : 0;
     document.getElementById('update-progress-bar').style.width = pct + '%';
@@ -2376,7 +2378,10 @@ async function loadFlashDevices() {
 
 async function flashUpdate() {
   if (!selectedFlashDevice) return;
-  if (!confirm(`ACHTUNG: Alle Daten auf ${selectedFlashDevice} werden geloescht! Fortfahren?`)) return;
+  confirm2('Update schreiben', `ACHTUNG: Alle Daten auf ${selectedFlashDevice} werden geloescht! Fortfahren?`, () => { doFlashUpdate(); }); return;
+}
+async function doFlashUpdate() {
+  if (!selectedFlashDevice) return;
   document.getElementById('update-progress').style.display = 'block';
   document.getElementById('update-status-text').textContent = 'Schreibe auf USB...';
   document.getElementById('update-progress-bar').style.width = '0%';
@@ -2395,7 +2400,7 @@ async function initUpdateCheck() {
     banner.id = 'update-banner';
     banner.style.cssText = 'background:linear-gradient(90deg,rgba(34,197,94,0.15),rgba(59,130,246,0.1));border:1px solid var(--success);border-radius:8px;padding:10px 16px;margin:12px 24px 0;display:flex;align-items:center;justify-content:space-between;cursor:pointer';
     banner.innerHTML = `<span>🔄 <strong>flowbit OS v${r.latest_version}</strong> verfuegbar!</span><button class="btn btn-sm" onclick="showPage('update');checkUpdate()">Update</button>`;
-    document.querySelector('.main-content').prepend(banner);
+    document.querySelector('.main').prepend(banner);
   }
 }
 
