@@ -1065,10 +1065,10 @@ body.light .header { background: linear-gradient(135deg, #ffffff, #f0f2f5); }
         <div style="font-size:12px;color:var(--text-dim);margin-top:4px" id="update-progress-text"></div>
       </div>
       <div id="update-flash" style="margin-top:20px;display:none">
-        <div class="card-title" style="font-size:15px">Auf USB-Stick schreiben</div>
-        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Waehle den USB-Stick, auf den das Update geschrieben werden soll. <strong style="color:var(--danger)">ACHTUNG: Alle Daten auf dem Stick werden geloescht!</strong></p>
-        <div id="update-usb-list" style="margin:12px 0"></div>
-        <button class="btn btn-danger" id="update-flash-btn" onclick="flashUpdate()" disabled>Update auf USB schreiben</button>
+        <div class="card-title" style="font-size:15px">Update installieren</div>
+        <div id="update-bootdev-info" style="margin:12px 0"></div>
+        <button class="btn btn-danger" id="update-flash-btn" onclick="flashUpdate()" disabled>Update jetzt installieren</button>
+        <p style="color:var(--text-dim);font-size:11px;margin-top:8px">Nach dem Update muss das System neu gestartet werden.</p>
       </div>
     </div>
   </div>
@@ -2340,12 +2340,21 @@ async function pollUpdateProgress() {
     const totalMB = (r.total / 1024 / 1024).toFixed(1);
     document.getElementById('update-progress-text').textContent = `${dlMB} MB / ${totalMB} MB (${pct}%)`;
     setTimeout(pollUpdateProgress, 500);
-  } else if (r.status === 'done') {
+  } else if (r.status === 'done' && r.sha256) {
     document.getElementById('update-progress-bar').style.width = '100%';
     document.getElementById('update-status-text').textContent = 'Download abgeschlossen!';
     document.getElementById('update-progress-text').textContent = `SHA256: ${r.sha256 || 'n/a'}`;
     toast('Update heruntergeladen', 'success');
     loadFlashDevices();
+  } else if (r.status === 'done' && !r.sha256) {
+    document.getElementById('update-progress-bar').style.width = '100%';
+    document.getElementById('update-progress-bar').style.background = 'var(--success)';
+    document.getElementById('update-status-text').textContent = 'Update erfolgreich installiert!';
+    document.getElementById('update-progress-text').textContent = 'Bitte System neu starten um die neue Version zu laden.';
+    document.getElementById('update-flash-btn').textContent = 'Jetzt neu starten';
+    document.getElementById('update-flash-btn').onclick = () => { api('terminal', {command: 'reboot'}); };
+    document.getElementById('update-flash-btn').disabled = false;
+    toast('Update installiert — Neustart erforderlich', 'success');
   } else if (r.status === 'error') {
     document.getElementById('update-status-text').textContent = 'Fehler: ' + (r.error || 'Unbekannt');
     document.getElementById('update-progress-bar').style.width = '0%';
@@ -2362,28 +2371,33 @@ async function pollUpdateProgress() {
 
 async function loadFlashDevices() {
   document.getElementById('update-flash').style.display = 'block';
-  const r = await fetch('/api/usb/list').then(r=>r.json());
-  const devs = (r.devices || []).filter(d => d.type === 'disk' && d.removable);
-  const container = document.getElementById('update-usb-list');
-  if (!devs.length) {
-    container.innerHTML = '<p style="color:var(--text-dim)">Kein USB-Stick gefunden. Bitte einstecken und erneut pruefen.</p><button class="btn btn-sm btn-outline" onclick="loadFlashDevices()">Erneut suchen</button>';
-    return;
+  const r = await fetch('/api/update/bootdev').then(r=>r.json());
+  const container = document.getElementById('update-bootdev-info');
+  if (r.found) {
+    selectedFlashDevice = r.device;
+    document.getElementById('update-flash-btn').disabled = false;
+    container.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input)">
+        <div style="font-size:28px">💾</div>
+        <div>
+          <div style="font-weight:700;color:var(--text-bright)">Boot-Stick erkannt: ${r.device}</div>
+          <div style="font-size:12px;color:var(--text-dim)">${r.model || 'USB'} — ${r.size || '?'}</div>
+          <div style="font-size:11px;color:var(--warning);margin-top:4px">Das Update wird direkt auf diesen Stick geschrieben. Danach Neustart.</div>
+        </div>
+      </div>`;
+  } else {
+    container.innerHTML = `<p style="color:var(--danger)">Boot-Device nicht erkannt: ${r.error || 'unbekannt'}</p>`;
   }
-  container.innerHTML = devs.map(d => `
-    <label style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid var(--border);border-radius:8px;margin-bottom:6px;cursor:pointer" class="card">
-      <input type="radio" name="flash-dev" value="${d.path}" onchange="selectedFlashDevice='${d.path}';document.getElementById('update-flash-btn').disabled=false">
-      <div><strong>${d.path}</strong> — ${d.model||'USB'} (${d.size||'?'})</div>
-    </label>`).join('');
 }
 
 async function flashUpdate() {
   if (!selectedFlashDevice) return;
-  confirm2('Update schreiben', `ACHTUNG: Alle Daten auf ${selectedFlashDevice} werden geloescht! Fortfahren?`, () => { doFlashUpdate(); }); return;
+  confirm2('Update installieren', `Das ISO auf ${selectedFlashDevice} wird ueberschrieben und das System aktualisiert. Fortfahren?`, () => { doFlashUpdate(); });
 }
 async function doFlashUpdate() {
   if (!selectedFlashDevice) return;
   document.getElementById('update-progress').style.display = 'block';
-  document.getElementById('update-status-text').textContent = 'Schreibe auf USB...';
+  document.getElementById('update-status-text').textContent = 'Installiere Update...';
   document.getElementById('update-progress-bar').style.width = '0%';
   document.getElementById('update-progress-bar').style.background = 'linear-gradient(90deg,var(--accent),#6366f1)';
   const r = await api('update/flash', {device: selectedFlashDevice});

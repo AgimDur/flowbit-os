@@ -2548,6 +2548,35 @@ def terminal_exec(command):
         return {"output": str(e), "exit_code": -1}
 
 
+# ---- Boot Device Detection ----
+
+def get_boot_device():
+    """Detect the device flowbit OS was booted from."""
+    try:
+        # Check /proc/cmdline for the boot device
+        cmdline = Path("/proc/cmdline").read_text()
+        # archiso boots from a device mounted at /run/archiso/bootmnt
+        mnt = run_cmd("findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null", "", timeout=5).strip()
+        if mnt:
+            # Get the parent disk (e.g., /dev/sdb1 -> /dev/sdb)
+            disk = run_cmd(f"lsblk -ndo PKNAME {shlex.quote(mnt)} 2>/dev/null", "", timeout=5).strip()
+            if disk:
+                dev_path = f"/dev/{disk}"
+                # Get device info
+                info = run_cmd(f"lsblk -ndo SIZE,MODEL {shlex.quote(dev_path)} 2>/dev/null", "", timeout=5).strip()
+                parts = info.split(None, 1) if info else []
+                return {
+                    "device": dev_path,
+                    "partition": mnt,
+                    "size": parts[0] if parts else "?",
+                    "model": parts[1].strip() if len(parts) > 1 else "Boot Device",
+                    "found": True
+                }
+        return {"found": False, "error": "Boot-Device nicht erkannt"}
+    except Exception as e:
+        return {"found": False, "error": str(e)}
+
+
 # ---- Update System ----
 
 import hashlib
@@ -2781,6 +2810,8 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json(get_secureboot_info())
 
         # ---- Update Check ----
+        elif path == "/api/update/bootdev":
+            self.send_json(get_boot_device())
         elif path == "/api/version":
             self.send_json({"version": FLOWBIT_VERSION})
         elif path == "/api/update/check":
@@ -3413,7 +3444,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/api/update/flash":
             device = data.get("device", "")
-            if not device or not re.match(r'^/dev/sd[b-z]$', device):
+            if not device or not re.match(r'^/dev/(sd[a-z]|nvme\d+n\d+|sr\d+)$', device):
                 self.send_json({"error": "Ungültiges Gerät"}, 400)
                 return
             iso_path = "/tmp/flowbit-update.iso"
