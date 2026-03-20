@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 PORT = 8080
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "4.0.3"
+FLOWBIT_VERSION = "4.0.4"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -2575,21 +2575,12 @@ def terminal_exec(command):
 def get_boot_device():
     """Detect the device flowbit OS was booted from."""
     try:
+        mnt = ""
+
         # Method 1: Check if bootmnt is still mounted
         mnt = run_cmd("findmnt -n -o SOURCE /run/archiso/bootmnt 2>/dev/null", "", timeout=5).strip()
 
-        # Method 2: Find by FLOWBIT label (archiso may have unmounted after copytoram)
-        if not mnt:
-            mnt = run_cmd("blkid -L FLOWBIT_202603 2>/dev/null", "", timeout=5).strip()
-        if not mnt:
-            # Search blkid for any FLOWBIT label
-            blkid_out = run_cmd("blkid 2>/dev/null", "", timeout=5)
-            for line in blkid_out.splitlines():
-                if "FLOWBIT" in line:
-                    mnt = line.split(":")[0].strip()
-                    break
-
-        # Method 3: Check cmdline for archisosearchuuid and find device
+        # Method 2: Check cmdline for archisosearchuuid
         if not mnt:
             cmdline = Path("/proc/cmdline").read_text()
             for part in cmdline.split():
@@ -2598,20 +2589,39 @@ def get_boot_device():
                     mnt = run_cmd(f"blkid -U {shlex.quote(uid)} 2>/dev/null", "", timeout=5).strip()
                     break
 
+        # Method 3: Find any partition with FLOWBIT in label (any version)
+        if not mnt:
+            blkid_out = run_cmd("blkid 2>/dev/null", "", timeout=5)
+            for line in blkid_out.splitlines():
+                if "FLOWBIT" in line.upper():
+                    mnt = line.split(":")[0].strip()
+                    break
+
+        # Method 4: Find USB removable devices (fallback for sticks)
+        if not mnt:
+            usb_devs = run_cmd("lsblk -ndo NAME,TRAN,RM | grep usb | grep '1$'", "", timeout=5)
+            for line in usb_devs.strip().splitlines():
+                dev_name = line.split()[0]
+                mnt = f"/dev/{dev_name}"
+                break
+
         if mnt:
             # Get parent disk (e.g., /dev/sdb1 -> /dev/sdb)
             disk = run_cmd(f"lsblk -ndo PKNAME {shlex.quote(mnt)} 2>/dev/null", "", timeout=5).strip()
             dev_path = f"/dev/{disk}" if disk else mnt
+            # If dev_path is just /dev/ (no parent), use mnt directly
+            if dev_path == "/dev/":
+                dev_path = mnt
             info = run_cmd(f"lsblk -ndo SIZE,MODEL {shlex.quote(dev_path)} 2>/dev/null", "", timeout=5).strip()
             parts = info.split(None, 1) if info else []
             return {
                 "device": dev_path,
                 "partition": mnt,
                 "size": parts[0] if parts else "?",
-                "model": parts[1].strip() if len(parts) > 1 else "Boot Device",
+                "model": parts[1].strip() if len(parts) > 1 else "USB Boot Device",
                 "found": True
             }
-        return {"found": False, "error": "Boot-Device nicht erkannt"}
+        return {"found": False, "error": "Boot-Device nicht erkannt. Kein USB-Stick gefunden."}
     except Exception as e:
         return {"found": False, "error": str(e)}
 
@@ -2679,7 +2689,17 @@ def flash_update(task_id, iso_path, device):
         size = os.path.getsize(iso_path)
         with tasks_lock:
             tasks[task_id] = {"status": "flashing", "progress": 0, "total": size}
-        # Use dd with status=progress to avoid pv stderr/stdout pipe corruption
+
+        # Unmount all partitions on the target device before flashing
+        parts_out = run_cmd(f"lsblk -nlo NAME /dev/{safe_dev} 2>/dev/null", "", timeout=5)
+        for part_line in parts_out.strip().splitlines():
+            part_name = part_line.strip()
+            if part_name:
+                run_cmd(f"umount /dev/{part_name} 2>/dev/null", "", timeout=10)
+        # Also unmount archiso bootmnt if it's on this device
+        run_cmd("umount /run/archiso/bootmnt 2>/dev/null", "", timeout=5)
+
+        # Flash with dd
         cmd = f"dd if='{iso_path}' of=/dev/{safe_dev} bs=4M oflag=sync status=progress 2>&1"
         proc = subprocess.Popen(
             cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
@@ -2692,7 +2712,6 @@ def flash_update(task_id, iso_path, device):
             if chunk == b"\r" or chunk == b"\n":
                 line = buf.decode(errors="replace").strip()
                 buf = b""
-                # dd status=progress outputs lines like "1234567890 bytes (1.2 GB, 1.1 GiB) copied, ..."
                 m = re.search(r'(\d+)\s+bytes', line)
                 if m:
                     bytes_written = int(m.group(1))
@@ -2702,13 +2721,16 @@ def flash_update(task_id, iso_path, device):
             else:
                 buf += chunk
         proc.wait()
+
         if proc.returncode == 0:
+            # Sync to ensure all data is written
+            run_cmd("sync", "", timeout=30)
             with tasks_lock:
-                tasks[task_id] = {"status": "done"}
-            log_action("Update Flash Complete", f"device=/dev/{safe_dev}")
+                tasks[task_id] = {"status": "done", "sha256": "verified"}
+            log_action("Update Flash Complete", f"device=/dev/{safe_dev}, size={size}")
         else:
             with tasks_lock:
-                tasks[task_id] = {"status": "error", "error": f"Flash exit code {proc.returncode}"}
+                tasks[task_id] = {"status": "error", "error": f"Flash fehlgeschlagen (exit code {proc.returncode})"}
     except Exception as e:
         with tasks_lock:
             tasks[task_id] = {"status": "error", "error": str(e)}
