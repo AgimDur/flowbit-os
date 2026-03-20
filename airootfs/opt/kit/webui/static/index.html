@@ -73,9 +73,9 @@ body::before {
 
 /* ---- HUB-STYLE CENTERED LAYOUT ---- */
 .app {
-  max-width: 1400px;
+  max-width: 1800px;
   margin: 0 auto;
-  padding: 24px;
+  padding: 20px 32px;
   position: relative;
   z-index: 1;
 }
@@ -162,9 +162,9 @@ body.light .nav-sub { background: rgba(255,255,255,0.5); }
 .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .card-title { font-size: 15px; font-weight: 600; color: var(--text-bright); display: flex; align-items: center; gap: 8px; }
 
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
 @media (max-width: 1200px) { .grid-3 { grid-template-columns: repeat(2,1fr); } }
 @media (max-width: 900px) { .grid-2,.grid-3,.grid-4 { grid-template-columns: 1fr; } }
 
@@ -173,7 +173,7 @@ body.light .nav-sub { background: rgba(255,255,255,0.5); }
   backdrop-filter: var(--glass-light);
   -webkit-backdrop-filter: var(--glass-light);
   border: 1px solid var(--border);
-  border-radius: var(--radius); padding: 18px; transition: all 0.3s;
+  border-radius: var(--radius); padding: 22px; transition: all 0.3s;
   box-shadow: var(--shadow-glass);
 }
 .stat-card:hover { transform: translateY(-2px); border-color: rgba(0,212,170,0.3); box-shadow: var(--shadow-glow); }
