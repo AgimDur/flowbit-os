@@ -4,221 +4,149 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>flowbit OS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg-primary: #0a0e17;
-  --bg-secondary: rgba(17, 24, 39, 0.7);
-  --bg-card: rgba(26, 34, 54, 0.6);
-  --bg-card-hover: rgba(31, 42, 66, 0.7);
-  --bg-input: rgba(13, 19, 33, 0.8);
-  --border: rgba(42, 58, 92, 0.5);
-  --accent: #3b82f6;
-  --accent-glow: rgba(59, 130, 246, 0.3);
+  --bg-primary: #10131a;
+  --bg-card: rgba(255,255,255,0.08);
+  --bg-card-hover: rgba(255,255,255,0.14);
+  --bg-input: rgba(10, 15, 28, 0.7);
+  --border: rgba(255,255,255,0.12);
+  --accent: #00d4aa;
+  --accent-glow: rgba(0,212,170,0.3);
+  --accent-dim: rgba(0,212,170,0.15);
   --accent2: #10b981;
   --accent3: #f59e0b;
   --danger: #ef4444;
-  --text: #e2e8f0;
-  --text-dim: #64748b;
+  --text: #e8eaf0;
+  --text-dim: #9aa0b5;
   --text-bright: #f8fafc;
   --success: #22c55e;
   --warning: #f59e0b;
   --radius: 14px;
   --radius-sm: 10px;
+  --glow-teal: rgba(0,212,170,0.50);
+  --glow-blue: rgba(59,130,246,0.45);
+  --glow-purple: rgba(139,92,246,0.42);
+  --glow-orange: rgba(245,158,11,0.30);
+  --glow-pink: rgba(236,72,153,0.35);
+  --glow-cyan: rgba(6,182,212,0.32);
+  --font-display: 'JetBrains Mono', monospace;
+  --font-ui: 'Outfit', sans-serif;
+  --shadow-glass: 0 8px 32px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.08) inset;
+  --shadow-glow: 0 0 20px rgba(0,212,170,0.2);
   --glass: blur(20px) saturate(1.8);
-  --glass-light: blur(12px) saturate(1.4);
+  --glass-light: blur(12px) saturate(1.5);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg-primary);
-  background-image:
-    radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(99, 102, 241, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 50%);
   color: var(--text);
-  height: 100vh;
-  overflow: hidden;
+  position: relative;
+  min-height: 100vh;
+}
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(circle 700px at 5% 0%, var(--glow-teal) 0%, transparent 55%),
+    radial-gradient(circle 600px at 95% 5%, var(--glow-blue) 0%, transparent 50%),
+    radial-gradient(circle 500px at 80% 90%, var(--glow-purple) 0%, transparent 50%),
+    radial-gradient(circle 550px at 50% 50%, var(--glow-cyan) 0%, transparent 55%),
+    radial-gradient(circle 400px at 15% 80%, var(--glow-pink) 0%, transparent 50%),
+    radial-gradient(circle 350px at 40% 20%, var(--glow-orange) 0%, transparent 45%);
+  pointer-events: none;
+  animation: glowShift 20s ease-in-out infinite alternate;
+}
+@keyframes glowShift {
+  0% { transform: scale(1) translate(0, 0); opacity: 1; }
+  50% { transform: scale(1.05) translate(-1%, 1%); opacity: 0.9; }
+  100% { transform: scale(1) translate(1%, -1%); opacity: 1; }
 }
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
 
-/* ---- 3-COLUMN APP LAYOUT ---- */
-.app-layout {
-  display: flex;
-  height: 100vh;
-  overflow: hidden;
-}
-
-/* LEFT SIDEBAR */
-.sidebar {
-  width: 240px;
-  flex-shrink: 0;
-  background: var(--bg-secondary);
-  backdrop-filter: var(--glass);
-  -webkit-backdrop-filter: var(--glass);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  overflow-y: auto;
-  overflow-x: hidden;
-}
-.sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 18px 16px 14px;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.logo-icon {
-  width: 36px; height: 36px;
-  background: linear-gradient(135deg, var(--accent), #6366f1);
-  border-radius: var(--radius-sm);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 14px; font-weight: 900; color: white;
-  box-shadow: 0 3px 10px var(--accent-glow);
-  flex-shrink: 0;
-}
-.sidebar-logo h1 { font-size: 15px; font-weight: 700; color: var(--text-bright); line-height: 1.2; }
-.sidebar-logo span { font-size: 11px; color: var(--text-dim); }
-.sidebar-nav {
-  flex: 1;
-  padding: 8px 8px;
-  display: flex;
-  flex-direction: column;
-}
-.nav-section {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-dim);
-  padding: 14px 8px 4px;
-  font-weight: 600;
-}
-.nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  border: none;
-  background: none;
-  color: var(--text-dim);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: left;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-.nav-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
-.nav-btn.active { background: rgba(59,130,246,0.15); color: var(--accent); box-shadow: 0 0 20px rgba(59,130,246,0.1); }
-.nav-icon { font-size: 15px; width: 20px; text-align: center; flex-shrink: 0; display: inline-block; }
-.sidebar-footer {
-  padding: 12px 16px;
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.sidebar-version { font-size: 11px; color: var(--text-dim); font-family: monospace; }
-
-/* HAMBURGER (mobile) */
-.hamburger {
-  display: none;
-  background: none; border: none; color: var(--text); font-size: 20px;
-  cursor: pointer; padding: 4px 8px; border-radius: 4px;
-}
-.hamburger:hover { background: rgba(255,255,255,0.08); }
-
-/* CONTENT AREA (center) */
-.content-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-width: 0;
+/* ---- HUB-STYLE CENTERED LAYOUT ---- */
+.app {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+  position: relative;
+  z-index: 1;
 }
 
-/* TOP BAR */
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 20px;
-  background: var(--bg-secondary);
-  backdrop-filter: var(--glass-light);
-  -webkit-backdrop-filter: var(--glass-light);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-  gap: 12px;
+/* HEADER */
+.header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px;
+  padding: 16px 24px; background: var(--bg-card); backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; position: relative;
 }
-.topbar-left { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.topbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.topbar-time { font-size: 13px; color: var(--text-dim); font-family: monospace; }
-.topbar-badge {
+.header::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, var(--accent), #3b82f6, #8b5cf6);
+}
+.header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; font-family: var(--font-display); }
+.header h1 span { color: var(--accent); }
+.header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.header-info { display: flex; gap: 8px; }
+.header-badge {
   background: var(--bg-input); border: 1px solid var(--border);
   border-radius: 20px; padding: 3px 10px; font-size: 12px; color: var(--text);
+  font-family: var(--font-display);
+}
+.header-time { font-family: var(--font-display); font-size: 12px; color: var(--text-dim); }
+.version-badge { font-family: var(--font-display); font-size: 11px; color: var(--text-dim); background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); }
+.btn-ctrl {
+  width: 36px; height: 36px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-card); color: var(--text-dim); cursor: pointer;
+  font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.15s;
+}
+.btn-ctrl:hover { background: var(--bg-card-hover); color: var(--text); }
+
+/* Main Navigation Tabs */
+.nav-main {
+  display: flex; gap: 6px; margin-bottom: 0; flex-wrap: wrap;
+  padding: 4px; background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0; backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+.nav-tab {
+  padding: 10px 20px; border: none; background: transparent;
+  color: var(--text-dim); border-radius: var(--radius-sm);
+  cursor: pointer; font-size: 14px; font-weight: 500;
+  font-family: var(--font-ui); transition: all 0.15s; white-space: nowrap;
+}
+.nav-tab:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.nav-tab.active {
+  background: linear-gradient(135deg, var(--accent-dim), rgba(6,182,212,0.1));
+  color: var(--accent); box-shadow: 0 0 12px rgba(0,212,170,0.1);
 }
 
-/* MAIN SCROLL AREA */
-.main {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 24px;
+/* Sub Navigation */
+.nav-sub {
+  display: flex; gap: 4px; padding: 6px 8px; margin-bottom: 28px;
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+  border-top: none; border-radius: 0 0 var(--radius) var(--radius);
+  flex-wrap: wrap; min-height: 42px; align-items: center;
 }
+.nav-sub:empty { display: none; margin-bottom: 28px; }
+.nav-sub-btn {
+  padding: 6px 16px; border: 1px solid transparent; background: transparent;
+  color: var(--text-dim); border-radius: 6px; cursor: pointer;
+  font-size: 13px; font-family: var(--font-ui); transition: all 0.15s;
+}
+.nav-sub-btn:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.nav-sub-btn.active { color: var(--accent); background: var(--accent-dim); border-color: rgba(0,212,170,0.15); }
 
-/* RIGHT SIDEBAR */
-.right-sidebar {
-  width: 220px;
-  flex-shrink: 0;
-  background: var(--bg-secondary);
-  backdrop-filter: var(--glass);
-  -webkit-backdrop-filter: var(--glass);
-  border-left: 1px solid var(--border);
-  overflow-y: auto;
-  padding: 16px;
-}
-.right-sidebar-section {
-  margin-bottom: 20px;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 14px;
-}
-.right-sidebar-section h3 {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-dim);
-  font-weight: 600;
-  margin-bottom: 10px;
-}
-.quick-action-btn {
-  display: block;
-  width: 100%;
-  padding: 8px 10px;
-  margin-bottom: 6px;
-  background: transparent;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.15s;
-}
-.quick-action-btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(59,130,246,0.07); }
-.right-sidebar-stat {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 0;
-  border-bottom: 1px solid rgba(42,58,92,0.5);
-  font-size: 12px;
-}
-.right-sidebar-stat span:first-child { color: var(--text-dim); }
-.right-sidebar-stat span:last-child { color: var(--text-bright); font-weight: 600; font-size: 11px; }
+body.light .nav-main { background: rgba(255,255,255,0.65); }
+body.light .nav-sub { background: rgba(255,255,255,0.5); }
 
 /* ---- CARDS / CONTENT ---- */
 .card {
@@ -227,8 +155,10 @@ body {
   -webkit-backdrop-filter: var(--glass-light);
   border: 1px solid var(--border);
   border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-glass);
+  transition: background 0.2s, border-color 0.2s, transform 0.2s;
 }
+.card:hover { background: var(--bg-card-hover); border-color: rgba(255,255,255,0.15); transform: translateY(-1px); }
 .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .card-title { font-size: 15px; font-weight: 600; color: var(--text-bright); display: flex; align-items: center; gap: 8px; }
 
@@ -244,72 +174,75 @@ body {
   -webkit-backdrop-filter: var(--glass-light);
   border: 1px solid var(--border);
   border-radius: var(--radius); padding: 18px; transition: all 0.3s;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-glass);
 }
-.stat-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 8px 32px rgba(59, 130, 246, 0.15); }
-.stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-.stat-value { font-size: 22px; font-weight: 700; color: var(--text-bright); }
-.stat-sub { font-size: 11px; color: var(--text-dim); margin-top: 4px; }
+.stat-card:hover { transform: translateY(-2px); border-color: rgba(0,212,170,0.3); box-shadow: var(--shadow-glow); }
+.stat-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+.stat-value { font-family: var(--font-display); font-size: 28px; font-weight: 700; color: var(--text-bright); line-height: 1.1; text-shadow: 0 0 30px rgba(255,255,255,0.06); }
+.stat-sub { font-size: 12px; color: var(--text-dim); margin-top: 6px; }
 
 .btn {
-  background: linear-gradient(135deg, var(--accent), #2563eb);
-  color: white; border: none; border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #000; border: none; border-radius: var(--radius-sm);
   padding: 9px 18px; font-size: 13px; font-weight: 500; cursor: pointer;
-  transition: all 0.2s; display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-ui);
+  transition: all 0.15s; display: inline-flex; align-items: center; gap: 6px;
 }
-.btn:hover { transform: translateY(-1px); box-shadow: 0 4px 15px var(--accent-glow); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-.btn-success { background: linear-gradient(135deg, var(--accent2), #059669); }
-.btn-warning { background: linear-gradient(135deg, var(--accent3), #d97706); }
-.btn-danger { background: linear-gradient(135deg, var(--danger), #dc2626); }
-.btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
-.btn-outline:hover { border-color: var(--accent); color: var(--accent); box-shadow: none; }
+.btn:hover { opacity: 0.9; box-shadow: var(--shadow-glow); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; pointer-events: none; }
+.btn-success { background: linear-gradient(135deg, var(--accent2), #059669); color: white; }
+.btn-warning { background: linear-gradient(135deg, var(--accent3), #d97706); color: white; }
+.btn-danger { background: linear-gradient(135deg, var(--danger), #dc2626); color: white; }
+.btn-outline { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-dim); }
+.btn-outline:hover { background: var(--bg-card-hover); color: var(--text-bright); border-color: rgba(255,255,255,0.2); }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; padding: 10px 14px; background: var(--bg-input); color: var(--text-dim); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
-td { padding: 10px 14px; border-bottom: 1px solid rgba(42,58,92,0.5); }
+th { text-align: left; padding: 10px 14px; background: var(--bg-input); color: var(--text-dim); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid var(--border); }
+td { padding: 10px 14px; border-bottom: 1px solid rgba(255,255,255,0.04); }
 tr:hover td { background: rgba(255,255,255,0.02); }
 
 .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; }
 .badge-success { background: rgba(34,197,94,0.15); color: var(--success); }
 .badge-danger { background: rgba(239,68,68,0.15); color: var(--danger); }
 .badge-warning { background: rgba(245,158,11,0.15); color: var(--warning); }
-.badge-info { background: rgba(59,130,246,0.15); color: var(--accent); }
+.badge-info { background: rgba(0,212,170,0.15); color: var(--accent); }
 
 .input-group { display: flex; gap: 8px; margin-bottom: 10px; }
-input[type="text"], input[type="number"], select {
+input[type="text"], input[type="number"], input[type="password"], select {
   background: var(--bg-input); border: 1px solid var(--border);
   border-radius: var(--radius-sm); padding: 9px 14px; font-size: 13px;
   color: var(--text); flex: 1; outline: none; transition: border-color 0.2s;
+  font-family: var(--font-ui);
 }
-input:focus, select:focus { border-color: var(--accent); }
+input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 12px rgba(0,212,170,0.15); }
 
 .terminal {
-  background: #000; border: 1px solid var(--border); border-radius: var(--radius-sm);
-  padding: 14px; font-family: 'JetBrains Mono','Fira Code',monospace;
-  font-size: 12px; line-height: 1.5; color: #a0f0a0;
-  max-height: 350px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  background: #0a0d14; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 14px; font-family: var(--font-display);
+  font-size: 12px; line-height: 1.5; color: var(--accent);
+  max-height: 350px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 
 .page { display: none; }
 .page.active { display: block; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
-.spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; }
+.spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; filter: drop-shadow(0 0 4px var(--accent-glow)); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .progress-wrap { margin: 10px 0; }
 .progress-bar { height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; }
-.progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 4px; transition: width 0.5s ease; width: 0%; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #00d4aa, #06b6d4); border-radius: 4px; transition: width 0.8s ease; width: 0%; box-shadow: 0 0 12px rgba(0,212,170,0.4); }
 .progress-text { font-size: 12px; color: var(--text-dim); margin-top: 4px; display: flex; justify-content: space-between; }
 
 .module-card {
   background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 20px; cursor: pointer;
-  transition: all 0.3s; display: flex; flex-direction: column; gap: 10px;
+  transition: all 0.2s; display: flex; flex-direction: column; gap: 10px;
+  box-shadow: var(--shadow-glass);
 }
-.module-card:hover { transform: translateY(-3px); border-color: var(--accent); box-shadow: 0 8px 30px rgba(0,0,0,0.4); }
+.module-card:hover { transform: translateY(-2px); border-color: rgba(0,212,170,0.3); box-shadow: var(--shadow-glow); }
 .module-icon { width: 44px; height: 44px; border-radius: var(--radius); display: flex; align-items: center; justify-content: center; font-size: 22px; }
 .module-card h3 { font-size: 15px; font-weight: 600; color: var(--text-bright); }
 .module-card p { font-size: 12px; color: var(--text-dim); line-height: 1.4; }
@@ -327,11 +260,11 @@ input:focus, select:focus { border-color: var(--accent); }
   display: flex; align-items: center; justify-content: center;
 }
 .confirm-box {
-  background: rgba(26, 34, 54, 0.85);
+  background: rgba(22, 26, 36, 0.9);
   backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass);
   border: 1px solid var(--danger);
   border-radius: var(--radius); padding: 28px; max-width: 480px; width: 90%;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--shadow-glass);
 }
 .confirm-box h3 { color: var(--danger); margin-bottom: 12px; font-size: 18px; }
 .confirm-box p { color: var(--text); margin-bottom: 16px; font-size: 14px; line-height: 1.5; }
@@ -343,22 +276,30 @@ input:focus, select:focus { border-color: var(--accent); }
 .task-error { color: var(--danger); }
 
 body.light {
-  --bg-primary: #eef1f6;
-  --bg-secondary: rgba(255, 255, 255, 0.7);
-  --bg-card: rgba(255, 255, 255, 0.55);
-  --bg-card-hover: rgba(248, 249, 250, 0.7);
-  --bg-input: rgba(240, 242, 245, 0.8);
-  --border: rgba(209, 213, 219, 0.6);
-  --accent: #2563eb;
-  --accent-glow: rgba(37, 99, 235, 0.2);
-  --text: #1f2937;
-  --text-dim: #6b7280;
+  --bg-primary: #f0f2f5;
+  --bg-card: rgba(255, 255, 255, 0.65);
+  --bg-card-hover: rgba(255, 255, 255, 0.80);
+  --bg-input: rgba(220, 224, 230, 0.9);
+  --border: rgba(0,0,0,0.08);
+  --accent: #00b894;
+  --accent-glow: rgba(0,184,148,0.2);
+  --accent-dim: rgba(0,184,148,0.1);
+  --text: #1a1d26;
+  --text-dim: #5a6070;
   --text-bright: #111827;
-  background-image:
-    radial-gradient(ellipse at 20% 50%, rgba(59, 130, 246, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(99, 102, 241, 0.04) 0%, transparent 50%);
+  --shadow-glass: 0 8px 32px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.9) inset;
+  --shadow-glow: 0 0 20px rgba(0,184,148,0.15);
+  --glow-teal: rgba(0,212,170,0.30);
+  --glow-blue: rgba(59,130,246,0.25);
+  --glow-purple: rgba(139,92,246,0.22);
+  --glow-orange: rgba(245,158,11,0.15);
+  --glow-pink: rgba(236,72,153,0.18);
+  --glow-cyan: rgba(6,182,212,0.15);
 }
-body.light .terminal { background: #f8f9fa; color: #1f2937; }
+body.light .terminal { background: #f8f9fa; color: #1a1d26; }
+body.light .confirm-box { background: rgba(255,255,255,0.95); }
+body.light .btn-outline:hover { border-color: rgba(0,0,0,0.15); }
+body.light .toast { color: #1a1d26; }
 
 .toast-container {
   position: fixed; top: 20px; right: 20px; z-index: 600;
@@ -374,19 +315,25 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
 }
 .toast-success { background: rgba(34,197,94,0.85); }
 .toast-error { background: rgba(239,68,68,0.85); }
-.toast-info { background: rgba(59,130,246,0.85); }
+.toast-info { background: rgba(0,212,170,0.85); color: #000; }
 .toast-warning { background: rgba(245,158,11,0.85); }
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
+/* Utility classes */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.hover-dim:hover { background: var(--bg-card-hover); }
+
 /* RESPONSIVE */
-@media (max-width: 1024px) {
-  .right-sidebar { display: none; }
+@media (max-width: 1100px) {
+  .header-info { display: none; }
+  .grid-4 { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 768px) {
-  .sidebar { position: fixed; left: -240px; top: 0; bottom: 0; z-index: 400; transition: left 0.25s ease; }
-  .sidebar.open { left: 0; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
-  .hamburger { display: block; }
-  .main { padding: 12px; }
+  .app { padding: 12px; }
+  .header { flex-direction: column; gap: 12px; text-align: center; }
+  .header-right { justify-content: center; }
+  .nav-tab { padding: 8px 14px; font-size: 12px; }
+  .nav-sub-btn { padding: 5px 12px; font-size: 12px; }
   .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr !important; }
   .card { padding: 14px; }
   .info-grid { grid-template-columns: 110px 1fr; }
@@ -396,104 +343,193 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
   .terminal { font-size: 11px; max-height: 250px; }
   table { font-size: 12px; display: block; overflow-x: auto; }
   th, td { padding: 6px 8px; }
-  .topbar-badge { display: none; }
+  .toast-container { top: auto; bottom: 20px; }
+}
+
+/* Settings Panel */
+.settings-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px); z-index: 800; display: none;
+  align-items: center; justify-content: center;
+}
+.settings-overlay.show { display: flex; }
+.settings-panel {
+  background: rgba(22,26,36,0.97); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 28px 32px; width: 520px; max-width: 95vw; max-height: 85vh; overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 30px rgba(0,212,170,0.08);
+}
+body.light .settings-panel { background: rgba(255,255,255,0.97); }
+.settings-title { font-size: 18px; font-weight: 700; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+.settings-title span { color: var(--accent); }
+.settings-section { margin-bottom: 24px; }
+.settings-section h3 {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+  color: var(--text-dim); margin-bottom: 12px; font-weight: 600;
+}
+.theme-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px;
+}
+.theme-card {
+  position: relative; border-radius: 12px; padding: 12px; cursor: pointer;
+  border: 2px solid var(--border); transition: all 0.2s; text-align: center;
+  overflow: hidden; min-height: 80px;
+}
+.theme-card::before {
+  content: ''; position: absolute; inset: 0; z-index: 0; border-radius: 10px;
+}
+.theme-card:hover { border-color: rgba(255,255,255,0.25); transform: translateY(-2px); }
+.theme-card.active { border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow); }
+.theme-card-label {
+  position: relative; z-index: 1; font-size: 11px; font-weight: 600;
+  color: white; text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+  margin-top: 8px;
+}
+.theme-dots {
+  display: flex; gap: 4px; justify-content: center; position: relative; z-index: 1;
+}
+.theme-dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.3); }
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.settings-row label { font-size: 13px; color: var(--text-dim); }
+.settings-toggle {
+  width: 44px; height: 24px; border-radius: 12px; border: none;
+  background: rgba(255,255,255,0.1); cursor: pointer; position: relative;
+  transition: background 0.2s;
+}
+.settings-toggle.on { background: var(--accent); }
+.settings-toggle::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 18px; height: 18px; border-radius: 50%; background: white;
+  transition: transform 0.2s; box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.settings-toggle.on::after { transform: translateX(20px); }
+.btn-randomize {
+  padding: 10px 20px; border: 1px dashed var(--accent); background: transparent;
+  color: var(--accent); border-radius: var(--radius-sm); cursor: pointer;
+  font-family: var(--font-ui); font-size: 13px; font-weight: 500;
+  transition: all 0.2s; width: 100%;
+}
+.btn-randomize:hover { background: var(--accent-dim); border-style: solid; }
+.glow-speed-slider {
+  width: 100%; -webkit-appearance: none; appearance: none; height: 4px;
+  border-radius: 2px; background: rgba(255,255,255,0.1); outline: none;
+}
+.glow-speed-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; box-shadow: 0 0 8px var(--accent-glow);
 }
 
 @media print {
-  .sidebar, .right-sidebar, .topbar, .btn, .confirm-overlay { display: none !important; }
-  .app-layout { display: block; }
-  .content-area { overflow: visible; }
-  .main { overflow: visible; padding: 0; }
-  .page { display: block !important; }
-  body { background: white; color: black; overflow: auto; height: auto; }
+  .header, .nav-main, .nav-sub, .btn, .confirm-overlay { display: none !important; }
+  .page:not(.active) { display: none !important; }
+  .page.active { display: block !important; }
+  body { background: white; color: black; overflow: auto; }
   .card { border: 1px solid #ccc; break-inside: avoid; }
 }
 </style>
 </head>
 <body>
 
-<div class="app-layout">
+<div class="app">
 
-  <!-- LEFT SIDEBAR -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <div class="logo-icon">fb</div>
-      <div>
-        <h1>flowbit OS</h1>
-        <span>IT Toolkit</span>
+  <!-- Header -->
+  <div class="header">
+    <h1><span>flowbit</span> OS</h1>
+    <div class="header-right">
+      <div class="header-info">
+        <span class="header-badge" id="h-hostname">...</span>
+        <span class="header-badge" id="h-model">...</span>
+        <span class="header-badge" id="h-serial">...</span>
+      </div>
+      <span class="header-time" id="h-time"></span>
+      <span class="version-badge" id="sidebar-version">v3.1.0</span>
+      <button class="btn-ctrl" onclick="toggleLang()" id="lang-btn" title="Sprache">EN</button>
+      <button class="btn-ctrl" onclick="toggleTheme()" id="theme-btn" title="Theme">&#9790;</button>
+      <button class="btn-ctrl" onclick="exportScreenshot()" title="Export">&#128248;</button>
+      <button class="btn-ctrl" onclick="toggleSettings()" title="Einstellungen" style="font-size:16px">&#9881;</button>
+    </div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div class="settings-overlay" id="settings-overlay" onclick="if(event.target===this)toggleSettings()">
+    <div class="settings-panel">
+      <div class="settings-title"><span>&#9881;</span> Einstellungen</div>
+
+      <div class="settings-section">
+        <h3>Hintergrund-Theme</h3>
+        <div class="theme-grid" id="theme-grid"></div>
+        <button class="btn-randomize" onclick="randomizeBackground()" style="margin-top:12px">&#127922; Zufälliges Theme generieren</button>
+      </div>
+
+      <div class="settings-section">
+        <h3>Glow-Animation</h3>
+        <div class="settings-row">
+          <label>Animation aktiv</label>
+          <button class="settings-toggle on" id="toggle-glow-anim" onclick="toggleGlowAnim(this)"></button>
+        </div>
+        <div class="settings-row">
+          <label>Geschwindigkeit</label>
+          <input type="range" class="glow-speed-slider" id="glow-speed" min="5" max="60" value="20" oninput="setGlowSpeed(this.value)">
+        </div>
+        <div class="settings-row">
+          <label>Intensität</label>
+          <input type="range" class="glow-speed-slider" id="glow-intensity" min="10" max="100" value="50" oninput="setGlowIntensity(this.value)">
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h3>Oberfläche</h3>
+        <div class="settings-row">
+          <label>Glasmorphismus-Effekt</label>
+          <button class="settings-toggle on" id="toggle-glass" onclick="toggleGlass(this)"></button>
+        </div>
+        <div class="settings-row">
+          <label>Hover-Animationen</label>
+          <button class="settings-toggle on" id="toggle-hover" onclick="toggleHover(this)"></button>
+        </div>
+        <div class="settings-row">
+          <label>Kompakter Modus</label>
+          <button class="settings-toggle" id="toggle-compact" onclick="toggleCompact(this)"></button>
+        </div>
+      </div>
+
+      <div style="text-align:center;margin-top:8px">
+        <button class="btn btn-outline" onclick="resetSettings()" style="font-size:12px">Auf Standard zurücksetzen</button>
       </div>
     </div>
+  </div>
 
-    <nav class="sidebar-nav">
-      <div class="nav-section">Übersicht</div>
-      <button class="nav-btn active" data-page="dashboard"><span class="nav-icon">🏠</span>Dashboard</button>
-      <button class="nav-btn" data-page="sysinfo"><span class="nav-icon">📊</span>System Info</button>
-
-      <div class="nav-section">Datenträger</div>
-      <button class="nav-btn" data-page="wiper"><span class="nav-icon">🧹</span>Wiper</button>
-      <button class="nav-btn" data-page="disks"><span class="nav-icon">💿</span>SMART / Disks</button>
-      <button class="nav-btn" data-page="partmgr"><span class="nav-icon">💾</span>Partitionen</button>
-      <button class="nav-btn" data-page="backup"><span class="nav-icon">📦</span>Backup / Restore</button>
-
-      <div class="nav-section">Netzwerk</div>
-      <button class="nav-btn" data-page="network"><span class="nav-icon">🌐</span>Netzwerk</button>
-      <button class="nav-btn" data-page="wifi"><span class="nav-icon">📶</span>WiFi</button>
-
-      <div class="nav-section">Hardware</div>
-      <button class="nav-btn" data-page="hwtest"><span class="nav-icon">⚡</span>Hardware Test</button>
-      <button class="nav-btn" data-page="bios"><span class="nav-icon">⚙️</span>BIOS Tools</button>
-
-      <div class="nav-section">Windows</div>
-      <button class="nav-btn" data-page="explorer"><span class="nav-icon">📁</span>Datei-Explorer</button>
-      <button class="nav-btn" data-page="passreset"><span class="nav-icon">🔑</span>Passwort-Reset</button>
-      <button class="nav-btn" data-page="registry"><span class="nav-icon">📝</span>Registry</button>
-      <button class="nav-btn" data-page="eventlog"><span class="nav-icon">📋</span>Event-Log</button>
-
-      <div class="nav-section">Sicherheit</div>
-      <button class="nav-btn" data-page="antivirus"><span class="nav-icon">🛡️</span>Antivirus</button>
-      <button class="nav-btn" data-page="bios" id="nav-secureboot"><span class="nav-icon">🔒</span>Secure Boot</button>
-
-      <div class="nav-section">Tools</div>
-      <button class="nav-btn" data-page="ssh"><span class="nav-icon">🖥️</span>SSH Client</button>
-      <button class="nav-btn" data-page="terminal"><span class="nav-icon">⌨️</span>Terminal</button>
-      <button class="nav-btn" data-page="wizard"><span class="nav-icon">🧙</span>Wizard</button>
-      <button class="nav-btn" data-page="sessionlog"><span class="nav-icon">📜</span>Session-Log</button>
-      <button class="nav-btn" data-page="update"><span class="nav-icon">🔄</span>Update</button>
-    </nav>
-
-    <div class="sidebar-footer">
-      <div class="sidebar-version" id="sidebar-version">v3.1.0</div>
-    </div>
-  </aside>
-
-  <!-- MAIN CONTENT AREA -->
-  <div class="content-area">
-    <!-- TOP BAR -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <button class="hamburger" id="hamburger-btn" onclick="document.getElementById('sidebar').classList.toggle('open')" aria-label="Menu">☰</button>
-        <span id="h-time" class="topbar-time"></span>
-        <span class="topbar-badge" id="h-hostname">...</span>
-        <span class="topbar-badge" id="h-model">...</span>
-        <span class="topbar-badge" id="h-serial">...</span>
-      </div>
-      <div class="topbar-right">
-        <button class="btn btn-sm btn-outline" onclick="toggleLang()" id="lang-btn">EN</button>
-        <button class="btn btn-sm btn-outline" onclick="toggleTheme()" id="theme-btn">🌙</button>
-        <button class="btn btn-sm btn-outline" onclick="exportScreenshot()">Export</button>
-      </div>
-    </header>
-
-    <!-- PAGE CONTENT -->
-    <div class="main">
+  <!-- Main Navigation -->
+  <div class="nav-main">
+    <button class="nav-tab active" data-category="dashboard" data-page="dashboard">Dashboard</button>
+    <button class="nav-tab" data-category="diagnose">Diagnose</button>
+    <button class="nav-tab" data-category="storage">Datentr&auml;ger</button>
+    <button class="nav-tab" data-category="network">Netzwerk</button>
+    <button class="nav-tab" data-category="windows">Windows</button>
+    <button class="nav-tab" data-category="remote">Remote</button>
+    <button class="nav-tab" data-category="system">System</button>
+  </div>
+  <div class="nav-sub" id="nav-sub">
+    <!-- Sub-items populated by JS based on active category -->
+  </div>
 
   <!-- DASHBOARD -->
   <div class="page active" id="page-dashboard">
     <div class="grid-4" id="stats-row">
       <div class="stat-card" id="spark-cpu"><div class="stat-label">CPU</div><div class="stat-value" id="s-cpu">...</div><div class="stat-sub" id="s-cpu-sub"></div></div>
       <div class="stat-card" id="spark-ram"><div class="stat-label">RAM</div><div class="stat-value" id="s-ram">...</div><div class="stat-sub" id="s-ram-sub"></div></div>
-      <div class="stat-card"><div class="stat-label">Datentraeger</div><div class="stat-value" id="s-disks">...</div><div class="stat-sub" id="s-disks-sub"></div></div>
+      <div class="stat-card"><div class="stat-label">Datenträger</div><div class="stat-value" id="s-disks">...</div><div class="stat-sub" id="s-disks-sub"></div></div>
       <div class="stat-card"><div class="stat-label">Netzwerk</div><div class="stat-value" id="s-net">...</div><div class="stat-sub" id="s-net-sub"></div></div>
+    </div>
+    <div class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div>
+        <div class="card-title">Geräte-Info</div>
+        <div id="device-summary" style="font-size:13px;color:var(--text-dim);margin-top:4px">Lade...</div>
+      </div>
+      <button class="btn" onclick="copyDeviceInfo()">In Zwischenablage kopieren</button>
     </div>
     <div class="card" id="bandwidth-card" style="margin-top:16px;display:none">
       <div class="card-title">Netzwerk-Bandbreite (Live)</div>
@@ -502,7 +538,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
     <div class="section-title" style="margin-top:24px">Notizen</div>
     <div class="card">
       <div class="card-header">
-        <div class="card-title">Geraete-Notizen</div>
+        <div class="card-title">Geräte-Notizen</div>
         <button class="btn btn-sm btn-outline" onclick="loadNotes()">Aktualisieren</button>
       </div>
       <div class="input-group" style="margin-top:10px">
@@ -528,7 +564,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
       </div>
       <div class="grid-2">
         <div>
-          <div class="section-title">Geraet</div>
+          <div class="section-title">Gerät</div>
           <div class="info-grid" id="info-device"></div>
           <div class="section-title">BIOS / Firmware</div>
           <div class="info-grid" id="info-bios"></div>
@@ -543,7 +579,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
     </div>
     <div class="grid-2">
       <div class="card">
-        <div class="card-title">Datentraeger</div>
+        <div class="card-title">Datenträger</div>
         <table id="tbl-disks-info" style="margin-top:10px"></table>
       </div>
       <div class="card">
@@ -565,7 +601,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
     <div class="card" id="monitor-card" style="display:none">
       <div class="card-title">Monitore / Displays</div>
       <table id="tbl-monitors" style="margin-top:10px">
-        <thead><tr><th>Name</th><th>Hersteller</th><th>Aufloesung</th><th>Anschluss</th><th>Seriennummer</th></tr></thead>
+        <thead><tr><th>Name</th><th>Hersteller</th><th>Auflösung</th><th>Anschluss</th><th>Seriennummer</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -579,9 +615,9 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
   <div class="page" id="page-wiper">
     <div class="card">
       <div class="card-header">
-        <div class="card-title" style="color:var(--danger)">Wiper — Sichere Datenloeschung</div>
+        <div class="card-title" style="color:var(--danger)">Wiper — Sichere Datenlöschung</div>
       </div>
-      <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">ACHTUNG: Alle Daten auf dem gewaehlten Datentraeger werden unwiderruflich geloescht!</p>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">ACHTUNG: Alle Daten auf dem gewählten Datenträger werden unwiderruflich gelöscht!</p>
 
       <div class="section-title">Disk Wipe</div>
       <div class="input-group">
@@ -592,8 +628,8 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
         </select>
         <select id="wipe-passes">
           <option value="1">1 Durchgang</option>
-          <option value="3">3 Durchgaenge (DoD)</option>
-          <option value="7">7 Durchgaenge (Gutmann-light)</option>
+          <option value="3">3 Durchgänge (DoD)</option>
+          <option value="7">7 Durchgänge (Gutmann-light)</option>
         </select>
         <button class="btn btn-danger" onclick="startWipe()">Wipe starten</button>
       </div>
@@ -607,7 +643,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
       <div id="erase-task"></div>
 
       <div class="section-title">RAM Scrub</div>
-      <p style="color:var(--text-dim);font-size:12px;margin-bottom:8px">Fuellt verfuegbaren RAM mit Zufallsdaten und loescht ihn.</p>
+      <p style="color:var(--text-dim);font-size:12px;margin-bottom:8px">Füllt verfügbaren RAM mit Zufallsdaten und löscht ihn.</p>
       <button class="btn btn-warning" onclick="startRamScrub()">RAM Scrub starten</button>
       <div id="ramscrub-task"></div>
     </div>
@@ -660,7 +696,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
       </div>
       <div class="card">
         <div class="card-title">Volle Diagnose</div>
-        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Fuehrt alle Netzwerktests durch und erstellt Bericht.</p>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Führt alle Netzwerktests durch und erstellt Bericht.</p>
         <button class="btn btn-sm btn-success" onclick="doNetDiag()">Diagnose starten</button>
         <div id="netdiag-task"></div>
       </div>
@@ -695,11 +731,11 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
   <div class="page" id="page-disks">
     <div class="card">
       <div class="card-header">
-        <div class="card-title">Datentraeger & SMART</div>
+        <div class="card-title">Datenträger & SMART</div>
         <button class="btn btn-sm btn-outline" onclick="loadSysinfo()">Aktualisieren</button>
       </div>
       <table id="tbl-disks-detail">
-        <thead><tr><th>Device</th><th>Typ</th><th>Groesse</th><th>Modell</th><th>SN</th><th>SMART</th><th>Aktion</th></tr></thead>
+        <thead><tr><th>Device</th><th>Typ</th><th>Grösse</th><th>Modell</th><th>SN</th><th>SMART</th><th>Aktion</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -714,13 +750,13 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
       <div class="card-title">Bitlocker-Status</div>
       <div class="input-group" style="margin-top:10px">
         <select id="bitlocker-partition"></select>
-        <button class="btn btn-sm" onclick="checkBitlocker()">Pruefen</button>
+        <button class="btn btn-sm" onclick="checkBitlocker()">Prüfen</button>
       </div>
       <div id="bitlocker-result" style="margin-top:10px;font-size:13px"></div>
     </div>
     <div class="card">
       <div class="card-title">SMART Details</div>
-      <div class="terminal" id="smart-out" style="min-height:200px;margin-top:10px">Disk auswaehlen...</div>
+      <div class="terminal" id="smart-out" style="min-height:200px;margin-top:10px">Disk auswählen...</div>
     </div>
   </div>
 
@@ -729,17 +765,17 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
     <div class="grid-2">
       <div class="card">
         <div class="card-title">RAM Test</div>
-        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Schreibt/liest RAM, prueft Integritaet mit Checksummen und Patterns.</p>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Schreibt/liest RAM, prüft Integrität mit Checksummen und Patterns.</p>
         <div class="actions">
           <button class="btn btn-sm" onclick="startRamTest(256,2)">Schnell (256 MB)</button>
           <button class="btn btn-sm btn-warning" onclick="startRamTest(512,3)">Mittel (512 MB)</button>
-          <button class="btn btn-sm btn-danger" onclick="startRamTest(1024,4)">Ausfuehrlich (1 GB)</button>
+          <button class="btn btn-sm btn-danger" onclick="startRamTest(1024,4)">Ausführlich (1 GB)</button>
         </div>
         <div id="ramtest-task"></div>
       </div>
       <div class="card">
         <div class="card-title">CPU Stresstest</div>
-        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Belastet alle Kerne, ueberwacht Temperatur (Auto-Stopp bei >95 C).</p>
+        <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Belastet alle Kerne, überwacht Temperatur (Auto-Stopp bei >95 C).</p>
         <div class="actions">
           <button class="btn btn-sm" onclick="startCpuTest(30)">30 Sek</button>
           <button class="btn btn-sm btn-warning" onclick="startCpuTest(120)">2 Min</button>
@@ -795,22 +831,22 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
       <div id="bios-profiles-list"></div>
     </div>
     <div class="card">
-      <div class="card-title">Boot-Geraete</div>
+      <div class="card-title">Boot-Geräte</div>
       <div id="boot-devices" style="margin-top:10px">Lade...</div>
     </div>
     <div class="card">
       <div class="card-title">PXE Network Boot</div>
       <div style="margin-top:10px;font-size:13px;color:var(--text-dim)">
-        <p>PXE Boot ermoeglicht das Booten von flowbit OS ueber das Netzwerk ohne USB-Stick.</p>
+        <p>PXE Boot ermöglicht das Booten von flowbit OS über das Netzwerk ohne USB-Stick.</p>
         <div id="pxe-info" style="margin-top:10px"></div>
       </div>
     </div>
     <div class="card">
       <div class="card-header">
         <div class="card-title">Firmware Updates (fwupd)</div>
-        <button class="btn btn-sm btn-outline" onclick="loadFirmware()">Pruefen</button>
+        <button class="btn btn-sm btn-outline" onclick="loadFirmware()">Prüfen</button>
       </div>
-      <div id="firmware-devices" style="margin-top:10px;font-size:13px">Klicke Pruefen um Firmware-Geraete zu laden...</div>
+      <div id="firmware-devices" style="margin-top:10px;font-size:13px">Klicke Prüfen um Firmware-Geräte zu laden...</div>
     </div>
     <div class="card">
       <div class="card-header">
@@ -827,7 +863,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
         <select id="bootrepair-type">
           <option value="fix-efi">EFI Boot-Eintrag reparieren</option>
           <option value="grub-install">GRUB installieren</option>
-          <option value="rebuild-bcd">Windows BCD pruefen</option>
+          <option value="rebuild-bcd">Windows BCD prüfen</option>
         </select>
         <button class="btn btn-sm btn-warning" onclick="startBootRepair()">Reparieren</button>
       </div>
@@ -861,7 +897,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
     </div>
     <div class="card">
       <div class="card-title">Disk Clone (1:1)</div>
-      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Klont eine Disk 1:1 auf eine andere. Ziel wird komplett ueberschrieben!</p>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Klont eine Disk 1:1 auf eine andere. Ziel wird komplett überschrieben!</p>
       <div class="input-group" style="margin-top:10px">
         <select id="clone-source"></select>
         <span style="color:var(--text-dim);padding:8px">&#8594;</span>
@@ -883,7 +919,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
     </div>
     <div class="card">
       <div class="card-title">USB-Boot-Stick erstellen</div>
-      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Schreibt eine ISO-Datei auf einen USB-Stick (bootfaehig).</p>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Schreibt eine ISO-Datei auf einen USB-Stick (bootfähig).</p>
       <div class="input-group" style="margin-top:10px">
         <input type="text" id="usbwrite-iso" placeholder="ISO-Pfad (z.B. /mnt/usb/image.iso)">
         <select id="usbwrite-device"></select>
@@ -898,7 +934,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
     <div class="grid-2">
       <div class="card">
         <div class="card-header">
-          <div class="card-title">Verfuegbare Netzwerke</div>
+          <div class="card-title">Verfügbare Netzwerke</div>
           <button class="btn btn-sm btn-outline" onclick="scanWifi()">Scannen</button>
         </div>
         <table id="tbl-wifi" style="margin-top:10px">
@@ -912,7 +948,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
         <div class="section-title">Manuell verbinden</div>
         <div class="input-group">
           <input type="text" id="wifi-ssid" placeholder="SSID">
-          <input type="text" id="wifi-pass" placeholder="Passwort">
+          <input type="password" id="wifi-pass" placeholder="Passwort">
           <button class="btn btn-sm btn-success" onclick="connectWifi()">Verbinden</button>
         </div>
         <div id="wifi-result" style="font-size:13px;margin-top:8px"></div>
@@ -934,7 +970,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
       </div>
       <div id="explorer-breadcrumb" style="font-size:13px;color:var(--text-dim);margin:8px 0;font-family:monospace"></div>
       <table id="tbl-explorer">
-        <thead><tr><th>Name</th><th>Groesse</th><th>Geaendert</th><th>Aktion</th></tr></thead>
+        <thead><tr><th>Name</th><th>Grösse</th><th>Geändert</th><th>Aktion</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
@@ -946,10 +982,10 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
       <div class="card-header">
         <div class="card-title" style="color:var(--warning)">Windows Passwort-Reset</div>
       </div>
-      <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Setzt Windows-Benutzerpasswoerter offline zurueck (loescht das Passwort).</p>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Setzt Windows-Benutzerpasswörter offline zurück (löscht das Passwort).</p>
       <div class="input-group">
         <select id="passreset-partition" onchange="loadWinUsers()">
-          <option value="">-- Windows-Partition waehlen --</option>
+          <option value="">-- Windows-Partition wählen --</option>
         </select>
         <button class="btn btn-sm btn-outline" onclick="loadWinPartitions()">Partitionen suchen</button>
       </div>
@@ -968,7 +1004,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
         <div class="card-title">Windows Event-Log Viewer</div>
         <div class="actions" style="margin:0">
           <select id="evtlog-partition" onchange="loadEventLogs()">
-            <option value="">-- Partition waehlen --</option>
+            <option value="">-- Partition wählen --</option>
           </select>
           <button class="btn btn-sm btn-outline" onclick="loadWinPartitions();populateEvtPartitions()">Suchen</button>
         </div>
@@ -979,8 +1015,8 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
           <div id="evtlog-list" style="max-height:400px;overflow-y:auto;font-size:12px"></div>
         </div>
         <div>
-          <div class="section-title">Eintraege</div>
-          <div class="terminal" id="evtlog-content" style="min-height:400px">Log-Datei auswaehlen...</div>
+          <div class="section-title">Einträge</div>
+          <div class="terminal" id="evtlog-content" style="min-height:400px">Log-Datei auswählen...</div>
         </div>
       </div>
     </div>
@@ -989,25 +1025,25 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
   <!-- SSH -->
   <div class="page" id="page-ssh">
     <div class="card">
-      <div class="card-title">SSH Remote-Ausfuehrung</div>
-      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Fuehrt einzelne Befehle auf entfernten Geraeten aus.</p>
+      <div class="card-title">SSH Remote-Ausführung</div>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Führt einzelne Befehle auf entfernten Geräten aus.</p>
       <div class="grid-2" style="margin-top:12px">
         <div class="input-group"><input type="text" id="ssh-host" placeholder="Host/IP"></div>
         <div class="input-group">
           <input type="text" id="ssh-port" placeholder="Port" value="22" style="max-width:80px">
           <input type="text" id="ssh-user" placeholder="Benutzer" value="root">
-          <input type="text" id="ssh-pass" placeholder="Passwort">
+          <input type="password" id="ssh-pass" placeholder="Passwort">
         </div>
       </div>
       <div class="input-group">
         <input type="text" id="ssh-cmd" placeholder="Befehl eingeben (z.B. hostname, uptime, df -h)">
-        <button class="btn btn-sm btn-success" onclick="execSsh()">Ausfuehren</button>
+        <button class="btn btn-sm btn-success" onclick="execSsh()">Ausführen</button>
       </div>
       <div class="terminal" id="ssh-output" style="min-height:200px;margin-top:10px">Bereit...</div>
     </div>
     <div class="card" style="margin-top:16px">
       <div class="card-title">VNC Remote Desktop Test</div>
-      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Prueft ob ein VNC-Server erreichbar ist.</p>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Prüft ob ein VNC-Server erreichbar ist.</p>
       <div class="input-group">
         <input type="text" id="vnc-host" placeholder="Host/IP">
         <input type="text" id="vnc-port" placeholder="Port" value="5900" style="max-width:80px">
@@ -1055,7 +1091,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
             <option value="xfs">XFS</option>
           </select>
           <input type="text" id="part-create-label" placeholder="Label" style="max-width:120px">
-          <input type="text" id="part-create-size" placeholder="Groesse (z.B. 50%)" value="100%">
+          <input type="text" id="part-create-size" placeholder="Grösse (z.B. 50%)" value="100%">
           <button class="btn btn-sm btn-success" onclick="createPartition()">Erstellen</button>
         </div>
         <div id="part-create-task"></div>
@@ -1101,7 +1137,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
       </div>
       <div class="input-group" style="margin-top:10px">
         <select id="reg-partition" onchange="loadRegHive()">
-          <option value="">-- Partition waehlen --</option>
+          <option value="">-- Partition wählen --</option>
         </select>
         <select id="reg-hive">
           <option value="SOFTWARE">SOFTWARE</option>
@@ -1111,15 +1147,15 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
         </select>
         <button class="btn btn-sm" onclick="loadRegHive()">Laden</button>
       </div>
-      <div class="terminal" id="reg-output" style="min-height:300px;margin-top:12px">Partition und Hive waehlen...</div>
+      <div class="terminal" id="reg-output" style="min-height:300px;margin-top:12px">Partition und Hive wählen...</div>
     </div>
   </div>
 
   <!-- WIZARD -->
   <div class="page" id="page-wizard">
     <div class="card">
-      <div class="card-title">Wizard — Gefuehrte Workflows</div>
-      <p style="color:var(--text-dim);font-size:13px;margin:8px 0">Schritt-fuer-Schritt Anleitungen fuer haeufige Aufgaben.</p>
+      <div class="card-title">Wizard — Geführte Workflows</div>
+      <p style="color:var(--text-dim);font-size:13px;margin:8px 0">Schritt-für-Schritt Anleitungen für häufige Aufgaben.</p>
       <div class="grid-3" id="wizard-list" style="margin-top:16px"></div>
     </div>
     <div class="card" id="wizard-active" style="display:none">
@@ -1146,7 +1182,7 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
   <div class="page" id="page-terminal">
     <div class="card">
       <div class="card-title">Terminal</div>
-      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Shell-Befehle direkt in der Web-UI ausfuehren.</p>
+      <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Shell-Befehle direkt in der Web-UI ausführen.</p>
       <div class="terminal" id="term-output" style="min-height:400px;margin-top:10px">flowbit OS Terminal\n$ </div>
       <div class="input-group" style="margin-top:8px">
         <span style="color:var(--accent);padding:8px;font-family:monospace;font-weight:700">$</span>
@@ -1184,53 +1220,19 @@ body.light .terminal { background: #f8f9fa; color: #1f2937; }
     </div>
   </div>
 
-    </div><!-- end .main -->
-  </div><!-- end .content-area -->
 
-  <!-- RIGHT SIDEBAR -->
-  <aside class="right-sidebar">
-    <div class="right-sidebar-section">
-      <h3>Quick Actions</h3>
-      <button class="quick-action-btn" onclick="exportSysinfo()">📄 Export Report</button>
-      <button class="quick-action-btn" onclick="exportIntune()">📊 Intune CSV</button>
-      <button class="quick-action-btn" onclick="exportAutopilot()">🔑 Autopilot Hash</button>
-      <button class="quick-action-btn" onclick="exportScreenshot()">📸 Screenshot</button>
-      <button class="quick-action-btn" onclick="showPage('wizard')">🧙 Wizard starten</button>
-    </div>
-    <div class="right-sidebar-section">
-      <h3>Handy-Zugriff</h3>
-      <img id="qr-img" src="/api/qrcode" alt="QR" style="width:120px;height:120px;border-radius:8px;background:white;padding:6px;image-rendering:pixelated;display:block;margin:0 auto">
-      <p id="qr-url" style="font-family:monospace;font-size:11px;text-align:center;margin-top:6px;color:var(--text-dim)">Lade...</p>
-    </div>
-    <div class="right-sidebar-section">
-      <h3>System</h3>
-      <div class="right-sidebar-stat">
-        <span>CPU</span><span id="rs-cpu">...</span>
-      </div>
-      <div class="right-sidebar-stat">
-        <span>RAM</span><span id="rs-ram">...</span>
-      </div>
-      <div class="right-sidebar-stat">
-        <span>Disks</span><span id="rs-disks">...</span>
-      </div>
-      <div class="right-sidebar-stat">
-        <span>Net</span><span id="rs-net">...</span>
-      </div>
-    </div>
-  </aside>
-
-</div><!-- end .app-layout -->
+</div><!-- end .app -->
 
 <div class="toast-container" id="toast-container"></div>
 
 <!-- Confirmation dialog -->
-<div class="confirm-overlay" id="confirm-dialog" style="display:none">
+<div class="confirm-overlay" id="confirm-dialog" style="display:none" onclick="if(event.target===this)confirmNo()">
   <div class="confirm-box">
-    <h3 id="confirm-title">Bestaetigung</h3>
+    <h3 id="confirm-title">Bestätigung</h3>
     <p id="confirm-msg"></p>
     <div class="confirm-actions">
       <button class="btn btn-outline" onclick="confirmNo()">Abbrechen</button>
-      <button class="btn btn-danger" onclick="confirmYes()">Ausfuehren</button>
+      <button class="btn btn-danger" onclick="confirmYes()">Ausführen</button>
     </div>
   </div>
 </div>
@@ -1244,12 +1246,12 @@ let currentLang = 'de';
 const i18n = {
   de: {
     dashboard: 'Dashboard', sysinfo: 'System Info', wiper: 'Wiper', network: 'Netzwerk',
-    disks: 'Datentraeger', hwtest: 'Hardware Test', bios: 'BIOS Tools', backup: 'Backup/Restore',
+    disks: 'Datenträger', hwtest: 'Hardware Test', bios: 'BIOS Tools', backup: 'Backup/Restore',
     wifi: 'WiFi', explorer: 'Datei-Explorer', passreset: 'Passwort-Reset', eventlog: 'Event-Log', ssh: 'SSH', sessionlog: 'Log',
     partmgr: 'Partitionen', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal', update: 'Update',
     export_txt: 'Export TXT', refresh: 'Aktualisieren', connect: 'Verbinden', scan: 'Scannen',
-    start: 'Starten', cancel: 'Abbrechen', execute: 'Ausfuehren', search: 'Suchen',
-    phone_access: 'Handy-Zugriff', modules: 'Module', confirmation: 'Bestaetigung',
+    start: 'Starten', cancel: 'Abbrechen', execute: 'Ausführen', search: 'Suchen',
+    phone_access: 'Handy-Zugriff', modules: 'Module', confirmation: 'Bestätigung',
     manufacturer: 'Hersteller', model: 'Modell', serial: 'Seriennummer'
   },
   en: {
@@ -1266,7 +1268,7 @@ const i18n = {
 function toggleLang() {
   currentLang = currentLang === 'de' ? 'en' : 'de';
   document.getElementById('lang-btn').textContent = currentLang === 'de' ? 'EN' : 'DE';
-  document.querySelectorAll('.nav-btn').forEach(btn => {
+  document.querySelectorAll('.nav-sub-btn[data-page]').forEach(btn => {
     const key = btn.dataset.page;
     if (i18n[currentLang][key]) btn.textContent = i18n[currentLang][key];
   });
@@ -1278,19 +1280,93 @@ setInterval(() => {
   if (el) el.textContent = new Date().toLocaleString('de-CH');
 }, 1000);
 
-// Navigation
-document.querySelectorAll('.nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => showPage(btn.dataset.page));
-});
+// Navigation categories
+const navCategories = {
+  dashboard: [{ id: 'dashboard', label: 'Dashboard' }],
+  diagnose: [
+    { id: 'sysinfo', label: 'System Info' },
+    { id: 'disks', label: 'SMART / Disks' },
+    { id: 'hwtest', label: 'Hardware Test' },
+    { id: 'antivirus', label: 'Antivirus' }
+  ],
+  storage: [
+    { id: 'partmgr', label: 'Partitionen' },
+    { id: 'backup', label: 'Backup / Clone' },
+    { id: 'wiper', label: 'Wiper' },
+  ],
+  network: [
+    { id: 'network', label: 'Netzwerk' },
+    { id: 'wifi', label: 'WiFi' }
+  ],
+  windows: [
+    { id: 'explorer', label: 'Datei-Explorer' },
+    { id: 'passreset', label: 'Passwort-Reset' },
+    { id: 'registry', label: 'Registry' },
+    { id: 'eventlog', label: 'Event-Log' }
+  ],
+  remote: [
+    { id: 'ssh', label: 'SSH Client' },
+    { id: 'terminal', label: 'Terminal' }
+  ],
+  system: [
+    { id: 'bios', label: 'BIOS / Firmware' },
+    { id: 'wizard', label: 'Wizard' },
+    { id: 'update', label: 'Update' },
+    { id: 'sessionlog', label: 'Session-Log' }
+  ]
+};
+
+function showCategory(category) {
+  // Update main tabs
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelector(`.nav-tab[data-category="${category}"]`)?.classList.add('active');
+
+  // Populate sub-nav
+  const subNav = document.getElementById('nav-sub');
+  const items = navCategories[category] || [];
+
+  if (category === 'dashboard') {
+    subNav.innerHTML = '';
+    showPage('dashboard');
+    return;
+  }
+
+  subNav.innerHTML = items.map((item, i) =>
+    `<button class="nav-sub-btn${i === 0 ? ' active' : ''}" data-page="${item.id}">${item.label}</button>`
+  ).join('');
+
+  // Add click handlers to sub buttons
+  subNav.querySelectorAll('.nav-sub-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      subNav.querySelectorAll('.nav-sub-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      showPage(btn.dataset.page);
+    });
+  });
+
+  // Show first page of category
+  if (items.length > 0) showPage(items[0].id);
+}
 
 function showPage(name) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const page = document.getElementById('page-' + name);
   if (page) page.classList.add('active');
-  document.querySelectorAll('.nav-btn').forEach(b => {
-    if (b.dataset.page === name) b.classList.add('active');
+
+  // Highlight correct sub-btn
+  document.querySelectorAll('.nav-sub-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === name);
   });
+
+  // Find which category this page belongs to and highlight it
+  for (const [cat, pages] of Object.entries(navCategories)) {
+    if (pages.some(p => p.id === name)) {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.querySelector(`.nav-tab[data-category="${cat}"]`)?.classList.add('active');
+      break;
+    }
+  }
+
   // Load specific data
   if (name === 'bios') { loadBiosSettings(); loadBootDevices(); loadPxeInfo(); }
   if (name === 'wiper' || name === 'backup') populateDiskSelects();
@@ -1304,6 +1380,11 @@ function showPage(name) {
   if (name === 'registry') loadRegPartitions();
   if (name === 'wizard') { loadWizards(); loadChecklists(); }
 }
+
+// Main tab click handlers
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => showCategory(tab.dataset.category));
+});
 
 // API
 async function api(path, data) {
@@ -1335,7 +1416,7 @@ function confirmNo() {
 function renderTaskUI(containerId, taskId) {
   const container = document.getElementById(containerId);
   container.innerHTML = `
-    <div class="task-status task-running"><div class="spinner"></div> Laeuft...</div>
+    <div class="task-status task-running"><div class="spinner"></div> Läuft...</div>
     <div class="progress-wrap">
       <div class="progress-bar"><div class="progress-fill" id="pf-${taskId}"></div></div>
       <div class="progress-text"><span id="pp-${taskId}">0%</span><span id="pt-${taskId}"></span></div>
@@ -1414,24 +1495,19 @@ function updateDashboard() {
   document.getElementById('s-net').textContent = nets.length + ' aktiv';
   document.getElementById('s-net-sub').textContent = nets.map(i=>i.ip).join(', ') || 'keine IP';
 
-  // Right sidebar stats
-  const rsCpu = document.getElementById('rs-cpu');
-  const rsRam = document.getElementById('rs-ram');
-  const rsDisks = document.getElementById('rs-disks');
-  const rsNet = document.getElementById('rs-net');
-  if (rsCpu) rsCpu.textContent = cpuShort || '?';
-  if (rsRam) rsRam.textContent = s.ram_total || '?';
-  if (rsDisks) rsDisks.textContent = dc + ' Disk' + (dc!==1?'s':'');
-  if (rsNet) rsNet.textContent = nets.length + ' aktiv';
-
   // Sparkline data collection
   const cpuTemp = parseFloat((s.cpu_temp||'0').replace(/[^0-9.]/g,'')) || 0;
   sparkData.cpu.push(cpuTemp); if (sparkData.cpu.length > 20) sparkData.cpu.shift();
   const ramMatch = (s.ram_used||'').match(/([\d.]+)/);
   const ramVal = ramMatch ? parseFloat(ramMatch[1]) : 0;
   sparkData.ram.push(ramVal); if (sparkData.ram.length > 20) sparkData.ram.shift();
-  addSparkline('spark-cpu', sparkData.cpu, '#3b82f6');
+  addSparkline('spark-cpu', sparkData.cpu, '#00d4aa');
   addSparkline('spark-ram', sparkData.ram, '#10b981');
+
+  const summary = document.getElementById('device-summary');
+  if (summary) {
+    summary.textContent = `${s.manufacturer || ''} ${s.model || ''} | SN: ${s.serial || '?'} | ${s.cpu ? s.cpu.split('@')[0].trim().split(' ').slice(-3).join(' ') : '?'} | ${s.ram_total || '?'} RAM`;
+  }
 }
 
 function updateSysinfoPage() {
@@ -1445,7 +1521,7 @@ function updateSysinfoPage() {
   setInfoGrid('info-security', { 'Boot-Modus':s.boot_mode, 'TPM':s.tpm, 'Windows Key':s.windows_key });
 
   // Disks table
-  let dh = '<thead><tr><th>Device</th><th>Typ</th><th>Groesse</th><th>Modell</th><th>SMART</th></tr></thead><tbody>';
+  let dh = '<thead><tr><th>Device</th><th>Typ</th><th>Grösse</th><th>Modell</th><th>SMART</th></tr></thead><tbody>';
   (s.disks||[]).forEach(d => {
     const b = d.smart==='PASSED'?'badge-success':d.smart==='FAILED'?'badge-danger':'badge-warning';
     dh += `<tr><td>/dev/${d.name}</td><td><span class="badge badge-info">${d.type}</span></td><td>${d.size}</td><td>${d.model}</td><td><span class="badge ${b}">${d.smart}</span></td></tr>`;
@@ -1463,7 +1539,7 @@ function updateSysinfoPage() {
   // RAM slots
   if ((s.ram_slots||[]).length > 0) {
     document.getElementById('ram-slots-card').style.display = 'block';
-    let rh = '<thead><tr><th>Slot</th><th>Groesse</th><th>Typ</th><th>Speed</th><th>Hersteller</th></tr></thead><tbody>';
+    let rh = '<thead><tr><th>Slot</th><th>Grösse</th><th>Typ</th><th>Speed</th><th>Hersteller</th></tr></thead><tbody>';
     s.ram_slots.forEach(r => {
       rh += `<tr><td>${r.locator||'?'}</td><td>${r.size||'?'}</td><td>${r.type||'?'}</td><td>${r.speed||'?'}</td><td>${r.manufacturer||'?'}</td></tr>`;
     });
@@ -1515,10 +1591,28 @@ function setInfoGrid(id, data) {
 
 // ---- EXPORT / SCREENSHOT ----
 function exportScreenshot() {
-  const page = document.querySelector('.page.active');
-  const title = document.querySelector('.nav-btn.active')?.textContent || 'Export';
-  const text = page?.innerText || 'Keine Daten';
-  downloadFile('flowbit_' + title + '_' + new Date().toISOString().slice(0,10) + '.txt', text);
+  if (typeof html2canvas === 'undefined') { toast('Screenshot-Bibliothek lädt...', 'warning'); return; }
+  const target = document.querySelector('.page.active');
+  if (!target) { toast('Nichts zum Exportieren', 'warning'); return; }
+  const title = document.querySelector('.nav-tab.active')?.textContent?.trim() || 'Export';
+  toast('Screenshot wird erstellt...', 'info');
+  html2canvas(target, {
+    backgroundColor: '#10131a',
+    scale: 2,
+    useCORS: true,
+    logging: false
+  }).then(canvas => {
+    canvas.toBlob(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'flowbit_' + title.replace(/[^a-zA-Z0-9]/g,'_') + '_' + new Date().toISOString().slice(0,10) + '.png';
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast('Screenshot gespeichert!', 'success');
+    }, 'image/png');
+  }).catch(() => {
+    toast('Screenshot fehlgeschlagen', 'error');
+  });
 }
 
 // ---- BATTERY ----
@@ -1529,8 +1623,8 @@ async function loadBattery() {
   let html = '<div class="grid-2"><div>';
   html += '<div class="info-grid">';
   const fields = {
-    'Status': r.status, 'Kapazitaet': r.capacity + '%',
-    'Design-Kapazitaet': r.design_capacity, 'Aktuelle Kapazitaet': r.current_capacity,
+    'Status': r.status, 'Kapazität': r.capacity + '%',
+    'Design-Kapazität': r.design_capacity, 'Aktuelle Kapazität': r.current_capacity,
     'Wear Level': r.wear_level + '%', 'Ladezyklen': r.cycle_count,
     'Technologie': r.technology, 'Hersteller': r.manufacturer,
     'Modell': r.model_name, 'Seriennummer': r.serial_number
@@ -1582,7 +1676,7 @@ async function doTrace() {
 async function doPortCheck() {
   const el = document.getElementById('port-out');
   const t = document.getElementById('port-target').value, p = document.getElementById('port-num').value;
-  el.textContent = 'Pruefe...';
+  el.textContent = 'Prüfe...';
   const r = await api('portcheck',{target:t,port:parseInt(p)});
   el.textContent = r.open ? `Port ${p} ist OFFEN` : `Port ${p} ist GESCHLOSSEN`;
 }
@@ -1612,7 +1706,7 @@ async function loadWolHistory() {
   const el = document.getElementById('wol-history');
   if (r.history && r.history.length) {
     el.innerHTML = r.history.map(h => `<div style="padding:3px 0">${h.mac} — ${h.time}</div>`).join('');
-  } else el.textContent = 'Keine Eintraege';
+  } else el.textContent = 'Keine Einträge';
 }
 
 // ---- NETWORK SCANNER ----
@@ -1648,14 +1742,14 @@ function startWipe() {
   const dev = document.getElementById('wipe-disk').value;
   const method = document.getElementById('wipe-method').value;
   const passes = document.getElementById('wipe-passes').value;
-  confirm2('Disk Wipe', `ALLE Daten auf /dev/${dev} werden mit ${passes}x ${method} unwiderruflich geloescht! Fortfahren?`, async () => {
+  confirm2('Disk Wipe', `ALLE Daten auf /dev/${dev} werden mit ${passes}x ${method} unwiderruflich gelöscht! Fortfahren?`, async () => {
     const r = await api('wiper/wipe',{device:dev, method, passes:parseInt(passes)});
     if (r.task_id) renderTaskUI('wipe-task', r.task_id);
   });
 }
 function startSecureErase() {
   const dev = document.getElementById('erase-disk').value;
-  confirm2('SSD Secure Erase', `Secure Erase auf /dev/${dev} ausfuehren? Alle Daten werden geloescht!`, async () => {
+  confirm2('SSD Secure Erase', `Secure Erase auf /dev/${dev} ausführen? Alle Daten werden gelöscht!`, async () => {
     const r = await api('wiper/secure-erase',{device:dev});
     if (r.task_id) renderTaskUI('erase-task', r.task_id);
   });
@@ -1686,7 +1780,7 @@ async function loadBiosSettings() {
   status.textContent = 'Lade BIOS Settings...';
   const r = await api('bios/settings');
   if (!r.available) {
-    status.textContent = 'Firmware-Attributes nicht verfuegbar (nur Dell/HP/Lenovo mit Linux-Treiber).';
+    status.textContent = 'Firmware-Attributes nicht verfügbar (nur Dell/HP/Lenovo mit Linux-Treiber).';
     return;
   }
   status.textContent = `${r.settings.length} Settings gefunden (Vendor: ${r.vendor})`;
@@ -1695,7 +1789,7 @@ async function loadBiosSettings() {
   r.settings.forEach(s => {
     h += `<tr><td>${s.display_name||s.name}</td><td><strong>${s.current_value||'N/A'}</strong></td><td>${s.default_value||'-'}</td><td style="font-size:11px;color:var(--text-dim)">${s.possible_values||''}</td></tr>`;
   });
-  tbody.innerHTML = h || '<tr><td colspan="4" style="color:var(--text-dim)">Keine Settings verfuegbar</td></tr>';
+  tbody.innerHTML = h || '<tr><td colspan="4" style="color:var(--text-dim)">Keine Settings verfügbar</td></tr>';
 
   // Load profiles
   const profiles = await api('bios/profiles');
@@ -1747,14 +1841,14 @@ async function loadBootDevices() {
     html += '</ol>';
   }
   if (r.bootable_disks && r.bootable_disks.length) {
-    html += '<div class="section-title">Bootfaehige Datentraeger</div>';
-    html += '<table><thead><tr><th>Device</th><th>Groesse</th><th>Typ</th><th>Label</th></tr></thead><tbody>';
+    html += '<div class="section-title">Bootfähige Datenträger</div>';
+    html += '<table><thead><tr><th>Device</th><th>Grösse</th><th>Typ</th><th>Label</th></tr></thead><tbody>';
     r.bootable_disks.forEach(d => {
       html += `<tr><td>${d.name}</td><td>${d.size}</td><td>${d.fstype||'?'}</td><td>${d.label||'-'}</td></tr>`;
     });
     html += '</tbody></table>';
   }
-  if (!html) html = '<p style="color:var(--text-dim);font-size:13px">Keine Boot-Informationen verfuegbar</p>';
+  if (!html) html = '<p style="color:var(--text-dim);font-size:13px">Keine Boot-Informationen verfügbar</p>';
   document.getElementById('boot-devices').innerHTML = html;
 }
 
@@ -1770,7 +1864,7 @@ function startBackup() {
 function startRestore() {
   const img = document.getElementById('restore-image').value;
   const tgt = document.getElementById('restore-target').value;
-  confirm2('Disk Restore', `ACHTUNG: /dev/${tgt} wird komplett ueberschrieben mit ${img}! Fortfahren?`, async () => {
+  confirm2('Disk Restore', `ACHTUNG: /dev/${tgt} wird komplett überschrieben mit ${img}! Fortfahren?`, async () => {
     const r = await api('backup/restore',{image:img, target:tgt});
     if (r.task_id) renderTaskUI('restore-task', r.task_id);
   });
@@ -1778,8 +1872,8 @@ function startRestore() {
 function startClone() {
   const src = document.getElementById('clone-source').value;
   const tgt = document.getElementById('clone-target').value;
-  if (src === tgt) { toast('Source und Target muessen unterschiedlich sein!', 'warning'); return; }
-  confirm2('Disk Clone', `ACHTUNG: /dev/${tgt} wird 1:1 mit /dev/${src} ueberschrieben! Alle Daten auf /dev/${tgt} gehen verloren!`, async () => {
+  if (src === tgt) { toast('Source und Target müssen unterschiedlich sein!', 'warning'); return; }
+  confirm2('Disk Clone', `ACHTUNG: /dev/${tgt} wird 1:1 mit /dev/${src} überschrieben! Alle Daten auf /dev/${tgt} gehen verloren!`, async () => {
     const r = await api('backup/clone',{source:src, target:tgt});
     if (r.task_id) renderTaskUI('clone-task', r.task_id);
   });
@@ -1801,8 +1895,8 @@ function populateMultiCloneTargets() {
 function startMultiClone() {
   const src = document.getElementById('mclone-source').value;
   const targets = [...document.querySelectorAll('.mclone-target:checked')].map(c => c.value).filter(t => t !== src);
-  if (!targets.length) { toast('Mindestens ein Ziel auswaehlen!', 'warning'); return; }
-  confirm2('Multi-Clone', `ACHTUNG: ${targets.map(t=>'/dev/'+t).join(', ')} werden mit /dev/${src} ueberschrieben!`, async () => {
+  if (!targets.length) { toast('Mindestens ein Ziel auswählen!', 'warning'); return; }
+  confirm2('Multi-Clone', `ACHTUNG: ${targets.map(t=>'/dev/'+t).join(', ')} werden mit /dev/${src} überschrieben!`, async () => {
     const r = await api('backup/multiclone', {source: src, targets});
     if (r.task_id) renderTaskUI('mclone-task', r.task_id);
   });
@@ -1854,7 +1948,7 @@ let currentBrowsePath = '/';
 async function loadPartitions() {
   const r = await api('partitions');
   const sel = document.getElementById('explorer-partition');
-  sel.innerHTML = '<option value="">-- Partition waehlen --</option>' +
+  sel.innerHTML = '<option value="">-- Partition wählen --</option>' +
     (r.partitions||[]).map(p => `<option value="${p.name}" ${p.mounted?'':'style="color:var(--text-dim)"'}>${p.name} (${p.size} ${p.fstype||'?'}) ${p.mounted?'[mounted]':''}</option>`).join('');
 }
 async function mountAndBrowse() {
@@ -1890,7 +1984,7 @@ async function browsePath(path) {
     const icon = e.is_dir ? '&#128193;' : '&#128196;';
     const size = e.is_dir ? '-' : formatSize(e.size);
     const action = e.is_dir ?
-      `<button class="btn btn-sm btn-outline" onclick="browsePath('${path}/${e.name}')">Oeffnen</button>` :
+      `<button class="btn btn-sm btn-outline" onclick="browsePath('${path}/${e.name}')">Öffnen</button>` :
       `<a href="/api/download?path=${encodeURIComponent(path+'/'+e.name)}" class="btn btn-sm btn-outline" download>Download</a>`;
     html += `<tr><td style="cursor:${e.is_dir?'pointer':'default'}" ${e.is_dir?`onclick="browsePath('${path}/${e.name}')"`:''}>${icon} ${e.name}</td><td>${size}</td><td style="font-size:11px;color:var(--text-dim)">${e.modified||''}</td><td>${action}</td></tr>`;
   });
@@ -1908,7 +2002,7 @@ function formatSize(bytes) {
 async function loadWinPartitions() {
   const r = await api('winpartitions');
   const sel = document.getElementById('passreset-partition');
-  sel.innerHTML = '<option value="">-- Windows-Partition waehlen --</option>' +
+  sel.innerHTML = '<option value="">-- Windows-Partition wählen --</option>' +
     (r.partitions||[]).map(p => `<option value="${p.device}">${p.device} (${p.size}) - ${p.windows_version||'Windows'}</option>`).join('');
 }
 async function loadWinUsers() {
@@ -1925,10 +2019,10 @@ async function loadWinUsers() {
   ).join('');
 }
 async function resetPassword(partition, username) {
-  confirm2('Passwort Reset', `Passwort fuer "${username}" wird geloescht. Fortfahren?`, async () => {
+  confirm2('Passwort Reset', `Passwort für "${username}" wird gelöscht. Fortfahren?`, async () => {
     const r = await api('passreset/reset', {partition, username});
     document.getElementById('passreset-result').innerHTML = r.success ?
-      '<span style="color:var(--success)">Passwort erfolgreich zurueckgesetzt fuer: ' + username + '</span>' :
+      '<span style="color:var(--success)">Passwort erfolgreich zurückgesetzt für: ' + username + '</span>' :
       '<span style="color:var(--danger)">Fehler: ' + (r.error||'unbekannt') + '</span>';
   });
 }
@@ -2039,7 +2133,7 @@ async function loadSessionLog() {
   const tbody = document.querySelector('#tbl-sessionlog tbody');
   tbody.innerHTML = (r.log||[]).reverse().map(e =>
     `<tr><td style="white-space:nowrap">${e.time}</td><td><strong>${e.action}</strong></td><td style="color:var(--text-dim)">${e.details||''}</td></tr>`
-  ).join('') || '<tr><td colspan="3">Keine Eintraege</td></tr>';
+  ).join('') || '<tr><td colspan="3">Keine Einträge</td></tr>';
 }
 async function exportSessionLog() {
   const r = await api('sessionlog/export', {});
@@ -2087,8 +2181,8 @@ async function checkBitlocker() {
   if (!part) return;
   const r = await api('bitlocker', {partition: part});
   document.getElementById('bitlocker-result').innerHTML = r.encrypted ?
-    '<span class="badge badge-warning">Bitlocker verschluesselt</span><div style="margin-top:8px;font-size:12px;color:var(--text-dim)">' + (r.info||'') + '</div>' :
-    '<span class="badge badge-success">Nicht verschluesselt</span>';
+    '<span class="badge badge-warning">Bitlocker verschlüsselt</span><div style="margin-top:8px;font-size:12px;color:var(--text-dim)">' + (r.info||'') + '</div>' :
+    '<span class="badge badge-success">Nicht verschlüsselt</span>';
 }
 
 // ---- VNC TEST ----
@@ -2124,7 +2218,7 @@ async function loadPxeInfo() {
   document.getElementById('pxe-info').innerHTML = `
     <div class="info-grid">
       <div class="info-label">Server IP</div><div class="info-value">${r.ip}</div>
-      <div class="info-label">Status</div><div class="info-value"><span class="badge badge-info">Verfuegbar (manuell)</span></div>
+      <div class="info-label">Status</div><div class="info-value"><span class="badge badge-info">Verfügbar (manuell)</span></div>
       <div class="info-label">Anleitung</div><div class="info-value">DHCP-Server mit next-server=${r.ip} und filename="pxelinux.0" konfigurieren</div>
     </div>`;
 }
@@ -2138,7 +2232,22 @@ document.addEventListener('keydown', (e) => {
     '9': 'wifi', '0': 'explorer', 'p': 'partmgr', 'a': 'antivirus',
     'g': 'registry', 'w': 'wizard', 'x': 'terminal'
   };
-  if (shortcuts[e.key]) { showPage(shortcuts[e.key]); return; }
+  if (shortcuts[e.key]) {
+    const pageName = shortcuts[e.key];
+    // Find category for this page
+    for (const [cat, pages] of Object.entries(navCategories)) {
+      if (pages.some(p => p.id === pageName)) {
+        showCategory(cat);
+        showPage(pageName);
+        // Highlight the right sub-btn
+        document.querySelectorAll('.nav-sub-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.page === pageName);
+        });
+        break;
+      }
+    }
+    return;
+  }
   if (e.key === 'r' || e.key === 'R') { loadSysinfo(); toast('Daten aktualisiert', 'info', 2000); return; }
   if (e.key === 't' || e.key === 'T') { toggleTheme(); return; }
   if (e.key === 'l' || e.key === 'L') { toggleLang(); return; }
@@ -2187,15 +2296,15 @@ async function loadFirmware() {
   const updates = await api('firmware/updates');
   let html = '';
   const devList = devices.Devices || [];
-  if (!devList.length) { document.getElementById('firmware-devices').textContent = 'fwupd nicht verfuegbar oder keine Geraete'; return; }
+  if (!devList.length) { document.getElementById('firmware-devices').textContent = 'fwupd nicht verfügbar oder keine Geräte'; return; }
   devList.forEach(d => {
     const hasUpdate = (updates.Devices||[]).some(u => u.DeviceId === d.DeviceId);
     html += `<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
       <div><strong>${d.Name||'?'}</strong><br><span style="color:var(--text-dim);font-size:11px">${d.Vendor||''} | Version: ${d.Version||'?'}</span></div>
-      ${hasUpdate ? '<span class="badge badge-warning">Update verfuegbar</span>' : '<span class="badge badge-success">Aktuell</span>'}
+      ${hasUpdate ? '<span class="badge badge-warning">Update verfügbar</span>' : '<span class="badge badge-success">Aktuell</span>'}
     </div>`;
   });
-  document.getElementById('firmware-devices').innerHTML = html || 'Keine Firmware-Geraete';
+  document.getElementById('firmware-devices').innerHTML = html || 'Keine Firmware-Geräte';
 }
 
 // ---- SECURE BOOT ----
@@ -2213,7 +2322,7 @@ async function loadSecureBoot() {
 function startBootRepair() {
   const dev = document.getElementById('bootrepair-device').value;
   const type = document.getElementById('bootrepair-type').value;
-  confirm2('Boot Repair', `${type} auf /dev/${dev} ausfuehren?`, async () => {
+  confirm2('Boot Repair', `${type} auf /dev/${dev} ausführen?`, async () => {
     const r = await api('bootrepair/repair', {device: dev, type});
     if (r.task_id) renderTaskUI('bootrepair-task', r.task_id);
   });
@@ -2223,12 +2332,12 @@ function startBootRepair() {
 async function loadPartLayout() {
   const r = await api('partmgr/layout');
   const devs = r.blockdevices || [];
-  let html = '<table><thead><tr><th>Device</th><th>Groesse</th><th>Typ</th><th>Dateisystem</th><th>Mount</th><th>Label</th><th>Aktion</th></tr></thead><tbody>';
+  let html = '<table><thead><tr><th>Device</th><th>Grösse</th><th>Typ</th><th>Dateisystem</th><th>Mount</th><th>Label</th><th>Aktion</th></tr></thead><tbody>';
   devs.forEach(d => {
     html += `<tr style="font-weight:600"><td>/dev/${d.name}</td><td>${d.size}</td><td>${d.type}</td><td>${d.fstype||'-'}</td><td>${d.mountpoint||'-'}</td><td>${d.label||'-'}</td><td></td></tr>`;
     (d.children||[]).forEach(c => {
       html += `<tr><td style="padding-left:24px">/dev/${c.name}</td><td>${c.size}</td><td>${c.type}</td><td>${c.fstype||'-'}</td><td>${c.mountpoint||'-'}</td><td>${c.label||'-'}</td>
-        <td><button class="btn btn-sm btn-outline" onclick="deletePartition('${d.name}','${c.name}')">Loeschen</button></td></tr>`;
+        <td><button class="btn btn-sm btn-outline" onclick="deletePartition('${d.name}','${c.name}')">Löschen</button></td></tr>`;
     });
   });
   html += '</tbody></table>';
@@ -2246,9 +2355,9 @@ function createPartition() {
 }
 function deletePartition(disk, part) {
   const partnum = part.replace(/[^0-9]/g, '');
-  confirm2('Partition loeschen', `/dev/${part} wird geloescht!`, async () => {
+  confirm2('Partition löschen', `/dev/${part} wird gelöscht!`, async () => {
     const r = await api('partmgr/delete', {device: disk, partnum: parseInt(partnum)});
-    toast(r.success ? 'Partition geloescht' : 'Fehler: ' + (r.output||''), r.success ? 'success' : 'error');
+    toast(r.success ? 'Partition gelöscht' : 'Fehler: ' + (r.output||''), r.success ? 'success' : 'error');
     loadPartLayout();
   });
 }
@@ -2321,11 +2430,11 @@ function renderWizardSteps() {
     const done = wizardProgress[s.id];
     const doneCount = activeWizard.steps.filter(st => wizardProgress[st.id]).length;
     const current = !done && i === doneCount;
-    html += `<div style="display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--border);${current?'background:rgba(59,130,246,0.05)':''}">
+    html += `<div style="display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid var(--border);${current?'background:rgba(0,212,170,0.05)':''}">
       <div style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;
         ${done?'background:var(--success);color:white':'background:var(--bg-input);color:var(--text-dim)'}">${done?'✓':i+1}</div>
       <div style="flex:1"><strong>${s.name}</strong></div>
-      ${!done ? `<button class="btn btn-sm ${s.auto?'':'btn-warning'}" onclick="completeWizardStep('${s.id}','${s.action}')">${s.auto?'Ausfuehren':'Manuell'}</button>` : '<span class="badge badge-success">Erledigt</span>'}
+      ${!done ? `<button class="btn btn-sm ${s.auto?'':'btn-warning'}" onclick="completeWizardStep('${s.id}','${s.action}')">${s.auto?'Ausführen':'Manuell'}</button>` : '<span class="badge badge-success">Erledigt</span>'}
     </div>`;
   });
   document.getElementById('wizard-steps').innerHTML = html;
@@ -2337,7 +2446,7 @@ function completeWizardStep(stepId, action) {
   // Navigate to the relevant page and trigger the action
   if (pageMap[action]) {
     showPage(pageMap[action]);
-    toast('Schritt: ' + stepId + ' — Fuehre Aktion aus...', 'info', 3000);
+    toast('Schritt: ' + stepId + ' — Führe Aktion aus...', 'info', 3000);
     // Trigger specific actions
     if (action === 'sysinfo') loadSysinfo();
     if (action === 'smart_dashboard') loadSmartDashboard();
@@ -2466,9 +2575,9 @@ async function checkUpdate() {
     const sizeMB = r.iso_size ? (r.iso_size / 1024 / 1024).toFixed(0) + ' MB' : 'unbekannt';
     result.innerHTML = `
       <div class="card" style="border-left:3px solid var(--success);background:rgba(34,197,94,0.05)">
-        <h3 style="color:var(--success);margin-bottom:8px">Update verfuegbar: v${r.latest_version}</h3>
+        <h3 style="color:var(--success);margin-bottom:8px">Update verfügbar: v${r.latest_version}</h3>
         <p style="font-size:13px;margin-bottom:6px">${r.release_notes || ''}</p>
-        <p style="font-size:12px;color:var(--text-dim)">Groesse: ${sizeMB}</p>
+        <p style="font-size:12px;color:var(--text-dim)">Grösse: ${sizeMB}</p>
         <button class="btn" style="margin-top:12px" onclick="startUpdateDownload()">Jetzt herunterladen</button>
       </div>`;
   } else {
@@ -2550,7 +2659,7 @@ async function loadFlashDevices() {
 
 async function flashUpdate() {
   if (!selectedFlashDevice) return;
-  confirm2('Update installieren', `Das ISO auf ${selectedFlashDevice} wird ueberschrieben und das System aktualisiert. Fortfahren?`, () => { doFlashUpdate(); });
+  confirm2('Update installieren', `Das ISO auf ${selectedFlashDevice} wird überschrieben und das System aktualisiert. Fortfahren?`, () => { doFlashUpdate(); });
 }
 async function doFlashUpdate() {
   if (!selectedFlashDevice) return;
@@ -2570,21 +2679,221 @@ async function initUpdateCheck() {
   if (r && r.update_available) {
     const banner = document.createElement('div');
     banner.id = 'update-banner';
-    banner.style.cssText = 'background:linear-gradient(90deg,rgba(34,197,94,0.15),rgba(59,130,246,0.1));border:1px solid var(--success);border-radius:8px;padding:10px 16px;margin:12px 24px 0;display:flex;align-items:center;justify-content:space-between;cursor:pointer';
-    banner.innerHTML = `<span>🔄 <strong>flowbit OS v${r.latest_version}</strong> verfuegbar!</span><button class="btn btn-sm" onclick="showPage('update');checkUpdate()">Update</button>`;
-    document.querySelector('.main').prepend(banner);
+    banner.style.cssText = 'background:linear-gradient(90deg,rgba(0,212,170,0.15),rgba(6,182,212,0.1));border:1px solid var(--accent);border-radius:8px;padding:10px 16px;margin:12px 24px 0;display:flex;align-items:center;justify-content:space-between;cursor:pointer';
+    banner.innerHTML = `<span>🔄 <strong>flowbit OS v${r.latest_version}</strong> verfügbar!</span><button class="btn btn-sm" onclick="showPage('update');checkUpdate()">Update</button>`;
+    const dashPage = document.getElementById('page-dashboard');
+    if (dashPage) dashPage.prepend(banner);
   }
 }
+
+function copyDeviceInfo() {
+  const s = sysinfo;
+  const info = [
+    `Hersteller: ${s.manufacturer || 'N/A'}`,
+    `Modell: ${s.model || 'N/A'}`,
+    `Seriennummer: ${s.serial || 'N/A'}`,
+    `UUID: ${s.uuid || 'N/A'}`,
+    `CPU: ${s.cpu || 'N/A'}`,
+    `RAM: ${s.ram_total || 'N/A'}`,
+    `Boot-Modus: ${s.boot_mode || 'N/A'}`,
+    `Windows Key: ${s.windows_key || 'N/A'}`,
+    `Disks: ${(s.disks||[]).map(d => d.name + ' ' + d.size + ' ' + d.type).join(', ')}`,
+  ].join('\n');
+  navigator.clipboard.writeText(info).then(() => {
+    toast('Geräte-Info kopiert!', 'success');
+  }).catch(() => {
+    // Fallback for non-HTTPS
+    const ta = document.createElement('textarea');
+    ta.value = info; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    toast('Geräte-Info kopiert!', 'success');
+  });
+}
+
+// ---- SETTINGS ----
+function toggleSettings() {
+  document.getElementById('settings-overlay').classList.toggle('show');
+}
+
+const bgThemes = [
+  { name: 'flowbit', colors: ['rgba(0,212,170,0.50)', 'rgba(59,130,246,0.45)', 'rgba(139,92,246,0.42)', 'rgba(6,182,212,0.32)', 'rgba(236,72,153,0.35)', 'rgba(245,158,11,0.30)'] },
+  { name: 'Aurora', colors: ['rgba(16,185,129,0.55)', 'rgba(52,211,153,0.45)', 'rgba(6,182,212,0.50)', 'rgba(59,130,246,0.35)', 'rgba(139,92,246,0.30)', 'rgba(20,184,166,0.40)'] },
+  { name: 'Sunset', colors: ['rgba(239,68,68,0.50)', 'rgba(249,115,22,0.50)', 'rgba(245,158,11,0.45)', 'rgba(236,72,153,0.40)', 'rgba(139,92,246,0.30)', 'rgba(251,146,60,0.35)'] },
+  { name: 'Ocean', colors: ['rgba(6,182,212,0.55)', 'rgba(59,130,246,0.50)', 'rgba(99,102,241,0.45)', 'rgba(14,165,233,0.40)', 'rgba(34,211,238,0.35)', 'rgba(56,189,248,0.30)'] },
+  { name: 'Neon', colors: ['rgba(0,255,136,0.55)', 'rgba(0,212,255,0.50)', 'rgba(255,0,128,0.45)', 'rgba(128,0,255,0.40)', 'rgba(255,255,0,0.30)', 'rgba(0,255,255,0.35)'] },
+  { name: 'Lava', colors: ['rgba(220,38,38,0.55)', 'rgba(234,88,12,0.50)', 'rgba(161,98,7,0.40)', 'rgba(239,68,68,0.35)', 'rgba(245,158,11,0.45)', 'rgba(185,28,28,0.30)'] },
+  { name: 'Forest', colors: ['rgba(22,163,74,0.55)', 'rgba(21,128,61,0.45)', 'rgba(5,150,105,0.40)', 'rgba(16,185,129,0.35)', 'rgba(101,163,13,0.30)', 'rgba(34,197,94,0.50)'] },
+  { name: 'Galaxy', colors: ['rgba(139,92,246,0.55)', 'rgba(168,85,247,0.50)', 'rgba(236,72,153,0.45)', 'rgba(99,102,241,0.40)', 'rgba(192,132,252,0.35)', 'rgba(219,39,119,0.30)'] },
+  { name: 'Ice', colors: ['rgba(186,230,253,0.40)', 'rgba(125,211,252,0.35)', 'rgba(56,189,248,0.45)', 'rgba(147,197,253,0.30)', 'rgba(199,210,254,0.35)', 'rgba(224,231,255,0.25)'] },
+  { name: 'Cyber', colors: ['rgba(0,255,65,0.50)', 'rgba(0,200,83,0.40)', 'rgba(0,150,136,0.35)', 'rgba(0,255,170,0.30)', 'rgba(0,128,128,0.25)', 'rgba(0,230,118,0.45)'] },
+  { name: 'Minimal', colors: ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.06)', 'rgba(255,255,255,0.04)', 'rgba(255,255,255,0.05)', 'rgba(255,255,255,0.03)', 'rgba(255,255,255,0.04)'] },
+  { name: 'Monochrom', colors: ['rgba(0,212,170,0.45)', 'rgba(0,212,170,0.30)', 'rgba(0,212,170,0.20)', 'rgba(0,212,170,0.35)', 'rgba(0,212,170,0.15)', 'rgba(0,212,170,0.25)'] },
+];
+
+let activeThemeIndex = 0;
+
+function renderThemeGrid() {
+  const grid = document.getElementById('theme-grid');
+  grid.innerHTML = bgThemes.map((t, i) => {
+    const bg = `radial-gradient(circle at 30% 30%, ${t.colors[0]} 0%, transparent 60%), radial-gradient(circle at 70% 70%, ${t.colors[1]} 0%, transparent 60%), radial-gradient(circle at 50% 50%, ${t.colors[2]} 0%, transparent 60%)`;
+    return `<div class="theme-card${i === activeThemeIndex ? ' active' : ''}" onclick="applyTheme(${i})" style="background:#10131a">
+      <div style="position:absolute;inset:0;border-radius:10px;background:${bg}"></div>
+      <div class="theme-dots">${t.colors.slice(0,4).map(c => `<div class="theme-dot" style="background:${c.replace(/,[\d.]+\)/, ',1)')}"></div>`).join('')}</div>
+      <div class="theme-card-label">${t.name}</div>
+    </div>`;
+  }).join('');
+}
+
+function applyTheme(index) {
+  const theme = bgThemes[index];
+  if (!theme) return;
+  activeThemeIndex = index;
+  const positions = [
+    'circle 700px at 5% 0%', 'circle 600px at 95% 5%', 'circle 500px at 80% 90%',
+    'circle 550px at 50% 50%', 'circle 400px at 15% 80%', 'circle 350px at 40% 20%'
+  ];
+  const gradients = theme.colors.map((c, i) =>
+    `radial-gradient(${positions[i]}, ${c} 0%, transparent ${i < 2 ? '55%' : '50%'})`
+  ).join(',\n    ');
+  document.body.style.setProperty('--glow-bg', gradients);
+  // Apply via a style override
+  const style = document.getElementById('dynamic-glow') || (() => {
+    const s = document.createElement('style');
+    s.id = 'dynamic-glow';
+    document.head.appendChild(s);
+    return s;
+  })();
+  style.textContent = `body::before { background: ${gradients} !important; }`;
+  renderThemeGrid();
+  localStorage.setItem('fb-theme-index', index);
+}
+
+function randomizeBackground() {
+  const hues = [];
+  const baseHue = Math.random() * 360;
+  for (let i = 0; i < 6; i++) {
+    const h = (baseHue + i * (60 + Math.random() * 30)) % 360;
+    const s = 70 + Math.random() * 30;
+    const l = 50 + Math.random() * 20;
+    const a = (0.25 + Math.random() * 0.35).toFixed(2);
+    hues.push(`hsla(${h.toFixed(0)},${s.toFixed(0)}%,${l.toFixed(0)}%,${a})`);
+  }
+  const randomTheme = { name: '🎲 Random', colors: hues };
+  // Replace or add random theme
+  const existingRandom = bgThemes.findIndex(t => t.name.includes('Random'));
+  if (existingRandom >= 0) {
+    bgThemes[existingRandom] = randomTheme;
+    applyTheme(existingRandom);
+  } else {
+    bgThemes.push(randomTheme);
+    applyTheme(bgThemes.length - 1);
+  }
+  toast('Neues Theme generiert!', 'success', 2000);
+}
+
+function toggleGlowAnim(btn) {
+  btn.classList.toggle('on');
+  const isOn = btn.classList.contains('on');
+  const style = document.getElementById('dynamic-settings') || (() => {
+    const s = document.createElement('style');
+    s.id = 'dynamic-settings';
+    document.head.appendChild(s);
+    return s;
+  })();
+  updateDynamicSettings();
+  localStorage.setItem('fb-glow-anim', isOn ? '1' : '0');
+}
+
+function setGlowSpeed(val) {
+  document.documentElement.style.setProperty('--glow-speed', val + 's');
+  updateDynamicSettings();
+  localStorage.setItem('fb-glow-speed', val);
+}
+
+function setGlowIntensity(val) {
+  const opacity = val / 100;
+  document.documentElement.style.setProperty('--glow-intensity', opacity);
+  updateDynamicSettings();
+  localStorage.setItem('fb-glow-intensity', val);
+}
+
+function updateDynamicSettings() {
+  const style = document.getElementById('dynamic-settings') || (() => {
+    const s = document.createElement('style');
+    s.id = 'dynamic-settings';
+    document.head.appendChild(s);
+    return s;
+  })();
+  const animOn = document.getElementById('toggle-glow-anim')?.classList.contains('on') ?? true;
+  const speed = document.getElementById('glow-speed')?.value || 20;
+  const intensity = (document.getElementById('glow-intensity')?.value || 50) / 100;
+  const glassOn = document.getElementById('toggle-glass')?.classList.contains('on') ?? true;
+  const hoverOn = document.getElementById('toggle-hover')?.classList.contains('on') ?? true;
+  const compactOn = document.getElementById('toggle-compact')?.classList.contains('on') ?? false;
+
+  let css = '';
+  css += `body::before { animation-duration: ${speed}s; opacity: ${intensity}; ${!animOn ? 'animation: none;' : ''} }\n`;
+  if (!glassOn) css += `.card, .stat-card { backdrop-filter: none; -webkit-backdrop-filter: none; }\n`;
+  if (!hoverOn) css += `.card:hover, .stat-card:hover, .module-card:hover { transform: none !important; }\n`;
+  if (compactOn) css += `.card { padding: 14px; margin-bottom: 10px; } .stat-value { font-size: 22px; } .app { padding: 16px; } .section-title { margin: 14px 0 8px; }\n`;
+  style.textContent = css;
+}
+
+function toggleGlass(btn) {
+  btn.classList.toggle('on');
+  updateDynamicSettings();
+  localStorage.setItem('fb-glass', btn.classList.contains('on') ? '1' : '0');
+}
+
+function toggleHover(btn) {
+  btn.classList.toggle('on');
+  updateDynamicSettings();
+  localStorage.setItem('fb-hover', btn.classList.contains('on') ? '1' : '0');
+}
+
+function toggleCompact(btn) {
+  btn.classList.toggle('on');
+  updateDynamicSettings();
+  localStorage.setItem('fb-compact', btn.classList.contains('on') ? '1' : '0');
+}
+
+function resetSettings() {
+  applyTheme(0);
+  document.getElementById('glow-speed').value = 20;
+  document.getElementById('glow-intensity').value = 50;
+  ['toggle-glow-anim', 'toggle-glass', 'toggle-hover'].forEach(id => {
+    document.getElementById(id)?.classList.add('on');
+  });
+  document.getElementById('toggle-compact')?.classList.remove('on');
+  updateDynamicSettings();
+  // Clear localStorage
+  ['fb-theme-index', 'fb-glow-anim', 'fb-glow-speed', 'fb-glow-intensity', 'fb-glass', 'fb-hover', 'fb-compact'].forEach(k => localStorage.removeItem(k));
+  toast('Einstellungen zurückgesetzt', 'info', 2000);
+}
+
+function loadSettings() {
+  const ti = localStorage.getItem('fb-theme-index');
+  if (ti !== null) applyTheme(parseInt(ti));
+  const speed = localStorage.getItem('fb-glow-speed');
+  if (speed) document.getElementById('glow-speed').value = speed;
+  const intensity = localStorage.getItem('fb-glow-intensity');
+  if (intensity) document.getElementById('glow-intensity').value = intensity;
+  if (localStorage.getItem('fb-glow-anim') === '0') document.getElementById('toggle-glow-anim')?.classList.remove('on');
+  if (localStorage.getItem('fb-glass') === '0') document.getElementById('toggle-glass')?.classList.remove('on');
+  if (localStorage.getItem('fb-hover') === '0') document.getElementById('toggle-hover')?.classList.remove('on');
+  if (localStorage.getItem('fb-compact') === '1') document.getElementById('toggle-compact')?.classList.add('on');
+  updateDynamicSettings();
+  renderThemeGrid();
+}
+
+// Init settings
+renderThemeGrid();
+setTimeout(loadSettings, 100);
 
 // Init
 loadSysinfo();
 setInterval(loadSysinfo, 30000);
-api('serverip').then(r => {
-  if(r.url) {
-    const els = document.querySelectorAll('#qr-url');
-    els.forEach(el => { el.textContent = r.url; });
-  }
-});
+// Server IP is used internally by other features
 initUpdateCheck();
 fetch('/api/version').then(r=>r.json()).then(r=>{
   const el = document.getElementById('update-current-ver');
@@ -2593,13 +2902,7 @@ fetch('/api/version').then(r=>r.json()).then(r=>{
   if(sv) sv.textContent = r.version || 'v?';
 });
 
-// Mobile sidebar: close on nav click
-document.querySelectorAll('.sidebar .nav-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const sb = document.getElementById('sidebar');
-    if (sb) sb.classList.remove('open');
-  });
-});
 </script>
+<script src="html2canvas.min.js"></script>
 </body>
 </html>

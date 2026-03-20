@@ -18,12 +18,13 @@ import struct
 import socket
 import zipfile
 import base64
+import fcntl
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8080
 UPDATE_SERVER = "http://10.11.10.114"
-FLOWBIT_VERSION = "3.2.1"
+FLOWBIT_VERSION = "3.2.2"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -133,9 +134,14 @@ def sanitize_device(name):
 
 def sanitize_path(path_str):
     """Validate and sanitize a filesystem path."""
-    if '..' in path_str:
+    if not path_str:
         return None
-    return path_str
+    resolved = os.path.realpath(path_str)
+    # Allow /tmp, /mnt, /media, /run/media, /dev for device operations
+    safe_prefixes = ('/tmp/', '/mnt/', '/media/', '/run/media/', '/opt/kit/')
+    if not any(resolved.startswith(p) for p in safe_prefixes) and resolved not in ('/tmp', '/mnt', '/media'):
+        return None
+    return resolved
 
 
 def get_system_info():
@@ -302,7 +308,7 @@ def generate_sysinfo_report(info):
         f"  CPU           : {info['cpu']}",
         f"  Kerne         : {info['cores']}",
         f"  RAM           : {info['ram_total']} (belegt: {info['ram_used']})", "",
-        "  DATENTRAEGER",
+        "  DATENTRÄGER",
         "  " + "-" * 48,
     ]
     for d in info.get("disks", []):
@@ -381,7 +387,7 @@ def ssd_secure_erase_thread(tid, device):
             return
 
         # Set password
-        append_output(tid, "Setze temporaeres Passwort...\n")
+        append_output(tid, "Setze temporäres Passwort...\n")
         update_task(tid, progress=20)
         r = subprocess.run(["hdparm", "--user-master", "u", "--security-set-pass", "Eins", f"/dev/{device}"],
                           capture_output=True, text=True, timeout=30)
@@ -410,7 +416,7 @@ def ram_scrub_thread(tid):
         if avail_mb < 64:
             avail_mb = 64
 
-        append_output(tid, f"RAM Scrub: {avail_mb} MB mit Zufallsdaten fuellen...\n")
+        append_output(tid, f"RAM Scrub: {avail_mb} MB mit Zufallsdaten füllen...\n")
         update_task(tid, progress=10)
 
         # Fill with random data in chunks
@@ -439,7 +445,7 @@ def ram_scrub_thread(tid):
                 pass
         subprocess.run(["sync"], timeout=10)
 
-        append_output(tid, f"RAM Scrub abgeschlossen: {written} MB ueberschrieben.\n")
+        append_output(tid, f"RAM Scrub abgeschlossen: {written} MB überschrieben.\n")
         finish_task(tid, 0)
     except Exception as e:
         append_output(tid, f"\nFehler: {str(e)}\n")
@@ -454,18 +460,29 @@ def ram_test_thread(tid, size_mb, passes):
             append_output(tid, f"\n--- RAM Test Durchgang {p}/{passes} ({size_mb} MB) ---\n")
 
             fname = f"/dev/shm/.ramtest_{tid}_{p}"
+            fname_stress = f"/dev/shm/.ramtest_stress_{tid}_{p}"
 
-            # Write random data
+            # Write random data (pattern A)
             append_output(tid, f"Schreibe {size_mb} MB Zufallsdaten...\n")
             subprocess.run(["dd", "if=/dev/urandom", f"of={fname}", "bs=1M", f"count={size_mb}"],
                          capture_output=True, timeout=120)
             update_task(tid, progress=int((p - 0.7) / passes * 100))
 
-            # Checksum
+            # First checksum of pattern A
             c1 = run_cmd(f"md5sum {fname} | cut -d' ' -f1", "", timeout=60)
+
+            # Write different pattern (pattern B) to stress RAM cells
+            subprocess.run(["dd", "if=/dev/zero", f"of={fname_stress}", "bs=1M", f"count={size_mb}"],
+                         capture_output=True, timeout=120)
+            # Remove stress pattern
+            try:
+                os.remove(fname_stress)
+            except:
+                pass
+
             subprocess.run(["sync"], timeout=10)
 
-            # Re-read
+            # Re-read and checksum original (tests if RAM corruption occurred)
             c2 = run_cmd(f"md5sum {fname} | cut -d' ' -f1", "", timeout=60)
 
             os.remove(fname)
@@ -473,7 +490,7 @@ def ram_test_thread(tid, size_mb, passes):
             if c1 and c1 == c2:
                 append_output(tid, f"  Durchgang {p}: OK (MD5: {c1})\n")
             else:
-                append_output(tid, f"  Durchgang {p}: FEHLER! Checksummen stimmen nicht ueberein!\n")
+                append_output(tid, f"  Durchgang {p}: FEHLER! Checksummen stimmen nicht überein!\n")
                 append_output(tid, f"  Erwartet: {c1}\n  Erhalten: {c2}\n")
                 finish_task(tid, 1)
                 return
@@ -646,7 +663,7 @@ def save_bios_profile(name, settings):
     lines = [
         f"# BIOS Profil: {name}",
         f"# Erstellt: {timestamp}",
-        f"# Geraet: {vendor} {model}",
+        f"# Gerät: {vendor} {model}",
         f"# Vendor: {settings.get('vendor', 'N/A')}",
         "#",
     ]
@@ -715,7 +732,7 @@ def backup_disk_thread(tid, source, target_path, compress=True):
             cmd = f"dd if=/dev/{source} of='{dest}' bs=4M status=progress conv=fsync 2>&1"
 
         append_output(tid, f"Ziel: {dest}\n")
-        append_output(tid, f"Groesse: {total_bytes} Bytes\n\n")
+        append_output(tid, f"Grösse: {total_bytes} Bytes\n\n")
 
         proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         while True:
@@ -750,14 +767,14 @@ def restore_disk_thread(tid, image_path, target_device):
         # Check SHA256
         sha_file = image_path + ".sha256"
         if os.path.exists(sha_file):
-            append_output(tid, "Pruefe SHA256 Checksumme...\n")
+            append_output(tid, "Prüfe SHA256 Checksumme...\n")
             update_task(tid, progress=5)
             expected = Path(sha_file).read_text().split()[0]
             actual = run_cmd(f"sha256sum '{image_path}' | cut -d' ' -f1", "", timeout=600)
             if expected == actual:
                 append_output(tid, f"Checksumme OK: {actual}\n\n")
             else:
-                append_output(tid, f"WARNUNG: Checksumme stimmt nicht ueberein!\n  Erwartet: {expected}\n  Erhalten: {actual}\n\n")
+                append_output(tid, f"WARNUNG: Checksumme stimmt nicht überein!\n  Erwartet: {expected}\n  Erhalten: {actual}\n\n")
 
         if image_path.endswith(".zst"):
             cmd = f"zstd -d -c '{image_path}' | dd of=/dev/{target_device} bs=4M status=progress conv=fsync 2>&1"
@@ -785,7 +802,7 @@ def clone_disk_thread(tid, source, target):
     try:
         append_output(tid, f"Disk Clone: /dev/{source} -> /dev/{target}\n")
         total_bytes = int(run_cmd(f"blockdev --getsize64 /dev/{source}", "0"))
-        append_output(tid, f"Groesse: {total_bytes} Bytes\n\n")
+        append_output(tid, f"Grösse: {total_bytes} Bytes\n\n")
 
         cmd = f"dd if=/dev/{source} of=/dev/{target} bs=4M status=progress conv=fsync 2>&1"
         proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -1680,7 +1697,7 @@ def multiclone_thread(tid, source, targets):
         safe_source = sanitize_device(source)
         total_bytes = int(run_cmd(f"blockdev --getsize64 /dev/{safe_source}", "0"))
         append_output(tid, f"Multi-Clone: /dev/{safe_source} -> {len(targets)} targets\n")
-        append_output(tid, f"Groesse: {total_bytes} Bytes\n\n")
+        append_output(tid, f"Grösse: {total_bytes} Bytes\n\n")
 
         procs = {}
         for t in targets:
@@ -1690,13 +1707,20 @@ def multiclone_thread(tid, source, targets):
             procs[safe_t] = proc
             append_output(tid, f"  Started clone to /dev/{safe_t}\n")
 
-        # Monitor all processes
+        # Monitor all processes with non-blocking reads to avoid stalls
+        for tgt, proc in procs.items():
+            flags = fcntl.fcntl(proc.stdout, fcntl.F_GETFL)
+            fcntl.fcntl(proc.stdout, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
         completed = set()
         while len(completed) < len(procs):
             for tgt, proc in procs.items():
                 if tgt in completed:
                     continue
-                line = proc.stdout.readline()
+                try:
+                    line = proc.stdout.readline()
+                except BlockingIOError:
+                    continue
                 if not line and proc.poll() is not None:
                     completed.add(tgt)
                     rc = proc.returncode
@@ -1710,6 +1734,7 @@ def multiclone_thread(tid, source, targets):
                         pct = int(int(m.group(1)) / total_bytes * 95 / len(procs))
                         overall = int(len(completed) / len(procs) * 95) + pct
                         update_task(tid, progress=min(overall, 99))
+            time.sleep(0.1)  # Avoid busy-wait when all processes have no output
 
         append_output(tid, "\nMulti-Clone abgeschlossen.\n")
         any_failed = any(p.returncode != 0 for p in procs.values())
@@ -1793,7 +1818,7 @@ def usb_write_thread(tid, iso_path, device):
 
         total_bytes = os.path.getsize(safe_iso)
         append_output(tid, f"USB Write: {safe_iso} -> /dev/{safe_dev}\n")
-        append_output(tid, f"ISO Groesse: {total_bytes} Bytes\n\n")
+        append_output(tid, f"ISO Grösse: {total_bytes} Bytes\n\n")
 
         # Unmount any partitions on the device first
         run_cmd(f"umount /dev/{safe_dev}* 2>/dev/null", "", timeout=10)
@@ -2108,7 +2133,7 @@ def check_firmware_updates():
 def firmware_update_thread(tid, device_id):
     """Run firmware update for a specific device."""
     try:
-        append_output(tid, f"Starte Firmware-Update fuer {device_id}...\n")
+        append_output(tid, f"Starte Firmware-Update für {device_id}...\n")
         update_task(tid, progress=10)
         r = subprocess.run(
             ["fwupdmgr", "update", device_id, "--no-reboot-check"],
@@ -2289,7 +2314,7 @@ def get_secureboot_info():
 
     # MOK list
     mok = run_cmd("mokutil --list-enrolled 2>/dev/null | head -30", "", timeout=10)
-    info["mok_keys"] = mok if mok else "Keine MOK Keys oder mokutil nicht verfuegbar"
+    info["mok_keys"] = mok if mok else "Keine MOK Keys oder mokutil nicht verfügbar"
 
     # PK/KEK/DB
     info["pk"] = run_cmd("efi-readvar -v PK 2>/dev/null | head -5", "N/A", timeout=5)
@@ -2329,7 +2354,7 @@ def boot_repair_thread(tid, device, repair_type):
             finish_task(tid, r.returncode)
 
         elif repair_type == "fix-efi":
-            append_output(tid, "Repariere EFI Boot-Eintraege...\n")
+            append_output(tid, "Repariere EFI Boot-Einträge...\n")
             # Re-create EFI boot entry
             r = subprocess.run(
                 ["efibootmgr", "-c", "-d", f"/dev/{device}", "-l", "\\EFI\\BOOT\\BOOTX64.EFI", "-L", "Boot Repair"],
@@ -2399,8 +2424,8 @@ WIZARDS = {
         "name": "PC aufbereiten",
         "steps": [
             {"id": "sysinfo", "name": "System-Info erfassen", "action": "sysinfo", "auto": True},
-            {"id": "smartcheck", "name": "SMART pruefen", "action": "smart_dashboard", "auto": True},
-            {"id": "wipe", "name": "Datentraeger loeschen", "action": "wipe", "auto": False},
+            {"id": "smartcheck", "name": "SMART prüfen", "action": "smart_dashboard", "auto": True},
+            {"id": "wipe", "name": "Datenträger löschen", "action": "wipe", "auto": False},
             {"id": "verify", "name": "Wipe verifizieren", "action": "verify_wipe", "auto": True},
             {"id": "export", "name": "Report exportieren", "action": "export", "auto": True},
         ]
@@ -2411,16 +2436,16 @@ WIZARDS = {
             {"id": "sysinfo", "name": "System-Info erfassen", "action": "sysinfo", "auto": True},
             {"id": "winkey", "name": "Windows Key auslesen", "action": "winkeys", "auto": True},
             {"id": "smart", "name": "Disk-Gesundheit", "action": "smart_dashboard", "auto": True},
-            {"id": "battery", "name": "Batterie pruefen", "action": "battery", "auto": True},
+            {"id": "battery", "name": "Batterie prüfen", "action": "battery", "auto": True},
             {"id": "export", "name": "Report speichern", "action": "export", "auto": True},
         ]
     },
     "pc-rueckgabe": {
-        "name": "PC-Rueckgabe",
+        "name": "PC-Rückgabe",
         "steps": [
             {"id": "sysinfo", "name": "System-Info erfassen", "action": "sysinfo", "auto": True},
             {"id": "hwtest", "name": "Hardware-Test", "action": "hwtest", "auto": False},
-            {"id": "wipe", "name": "Sichere Loeschung", "action": "wipe", "auto": False},
+            {"id": "wipe", "name": "Sichere Löschung", "action": "wipe", "auto": False},
             {"id": "biosreset", "name": "BIOS Reset", "action": "bios_reset", "auto": False},
             {"id": "export", "name": "Protokoll exportieren", "action": "export", "auto": True},
         ]
@@ -2472,23 +2497,23 @@ CHECKLISTS = {
             "Seriennummer notiert",
             "Modell/Hersteller erfasst",
             "Windows Key ausgelesen",
-            "BIOS Version geprueft",
+            "BIOS Version geprüft",
             "SMART Status OK",
-            "Batterie Zustand geprueft",
+            "Batterie Zustand geprüft",
             "RAM/CPU Info erfasst",
             "Report exportiert"
         ]
     },
     "pc-rueckgabe": {
-        "name": "PC-Rueckgabe Checkliste",
+        "name": "PC-Rückgabe Checkliste",
         "items": [
             "Daten gesichert",
             "Disk gewiped",
             "Wipe-Protokoll erstellt",
             "BIOS auf Standard",
             "BIOS Passwort entfernt",
-            "Hardware geprueft",
-            "Zubehoer vollstaendig",
+            "Hardware geprüft",
+            "Zubehör vollständig",
             "Protokoll unterschrieben"
         ]
     },
@@ -2501,7 +2526,7 @@ CHECKLISTS = {
             "Updates installiert",
             "Treiber aktuell",
             "Benutzer eingerichtet",
-            "Uebergabe dokumentiert"
+            "Übergabe dokumentiert"
         ]
     }
 }
@@ -2525,12 +2550,9 @@ def update_checklist(name, item_index, checked):
 # ---- Terminal ----
 
 def terminal_exec(command):
-    """Execute a shell command and return output."""
-    # Security: block dangerous commands
-    blocked = ["rm -rf /", "mkfs /dev/sd", "dd if=/dev/zero of=/dev/sd", "> /dev/sd"]
-    for b in blocked:
-        if b in command:
-            return {"output": "BLOCKED: Dieser Befehl ist aus Sicherheitsgruenden gesperrt.", "exit_code": -1}
+    """Execute a shell command and return output.
+    Terminal is intentionally unrestricted — this runs on a live/ephemeral system
+    where full shell access is expected and required for IT toolkit operations."""
 
     try:
         result = subprocess.run(
@@ -2657,24 +2679,25 @@ def flash_update(task_id, iso_path, device):
         size = os.path.getsize(iso_path)
         with tasks_lock:
             tasks[task_id] = {"status": "flashing", "progress": 0, "total": size}
-        # Use pv for accurate progress: pv -n outputs percentage to stderr
+        # Use dd with status=progress to avoid pv stderr/stdout pipe corruption
+        cmd = f"dd if='{iso_path}' of=/dev/{safe_dev} bs=4M oflag=sync status=progress 2>&1"
         proc = subprocess.Popen(
-            f"pv -n '{iso_path}' 2>&1 | dd of=/dev/{safe_dev} bs=4M oflag=sync 2>/dev/null",
-            shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
         )
-        # pv -n piped through 2>&1 means percentage lines come on stdout
         buf = b""
         while True:
             chunk = proc.stdout.read(1)
             if not chunk:
                 break
-            if chunk == b"\n" or chunk == b"\r":
+            if chunk == b"\r" or chunk == b"\n":
                 line = buf.decode(errors="replace").strip()
                 buf = b""
-                if line.isdigit():
-                    pct = int(line)
+                # dd status=progress outputs lines like "1234567890 bytes (1.2 GB, 1.1 GiB) copied, ..."
+                m = re.search(r'(\d+)\s+bytes', line)
+                if m:
+                    bytes_written = int(m.group(1))
                     with tasks_lock:
-                        tasks[task_id]["progress"] = int(size * pct / 100)
+                        tasks[task_id]["progress"] = bytes_written
                         tasks[task_id]["total"] = size
             else:
                 buf += chunk
@@ -3010,7 +3033,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 "=" * 64,
                 "  BIOS Settings Export — flowbit OS",
                 f"  Datum: {time.strftime('%d.%m.%Y %H:%M:%S')}",
-                f"  Geraet: {info['manufacturer']} {info['model']} (SN: {info['serial']})",
+                f"  Gerät: {info['manufacturer']} {info['model']} (SN: {info['serial']})",
                 "=" * 64, ""
             ]
             for s in settings.get("settings", []):
@@ -3038,7 +3061,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             image = data.get("image", "")
             target = data.get("target", "")
             if not image or not target:
-                self.send_json({"error": "Image und Target noetig"}, 400)
+                self.send_json({"error": "Image und Target nötig"}, 400)
                 return
             safe_tgt = sanitize_device(target)
             tid = new_task(f"Restore -> /dev/{safe_tgt}")
@@ -3049,7 +3072,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             source = data.get("source", "")
             target = data.get("target", "")
             if not source or not target:
-                self.send_json({"error": "Source und Target noetig"}, 400)
+                self.send_json({"error": "Source und Target nötig"}, 400)
                 return
             safe_src = sanitize_device(source)
             safe_tgt = sanitize_device(target)
@@ -3068,14 +3091,14 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"filename": filename, "content": report})
 
         elif path == "/api/export/intune":
-            info = get_system_info()
+            ap_info = get_autopilot_info()
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             csv_lines = [
                 "Device Serial Number,Windows Product ID,Hardware Hash",
-                f"{info['serial']},,{info['uuid']}"
+                f"{ap_info['serial']},,{ap_info['hardware_hash']}"
             ]
             self.send_json({
-                "filename": f"INTUNE_{info['serial']}_{timestamp}.csv",
+                "filename": f"INTUNE_{ap_info['serial']}_{timestamp}.csv",
                 "content": "\n".join(csv_lines)
             })
 
@@ -3432,7 +3455,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             for n in notes:
                 lines.append(f"[{n.get('created', '')}] {n.get('title', '')}")
                 if n.get('device_serial'):
-                    lines.append(f"  Geraet: {n['device_serial']}")
+                    lines.append(f"  Gerät: {n['device_serial']}")
                 lines.append(f"  {n.get('content', '')}")
                 lines.append("")
             content = "\n".join(lines)
