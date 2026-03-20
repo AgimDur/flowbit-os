@@ -346,6 +346,28 @@ body.light .toast { color: #1a1d26; }
   .toast-container { top: auto; bottom: 20px; }
 }
 
+/* Power Menu */
+.power-menu { position: relative; }
+.power-dropdown {
+  display: none; position: absolute; top: 100%; right: 0; margin-top: 8px;
+  background: rgba(22,26,36,0.97); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 6px 0; min-width: 200px; z-index: 100;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  animation: dropIn 0.15s ease;
+}
+.power-dropdown.show { display: block; }
+.power-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 12px 18px; border: none; background: none;
+  color: var(--text-dim); font-family: var(--font-ui); font-size: 13px;
+  cursor: pointer; text-align: left; transition: all 0.1s;
+}
+.power-item:hover { background: var(--bg-card-hover); color: var(--text); }
+.power-item-danger:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+body.light .power-dropdown { background: rgba(255,255,255,0.97); }
+@keyframes dropIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+
 /* Settings Panel */
 .settings-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(4px);
@@ -450,6 +472,14 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
       <button class="btn-ctrl" onclick="toggleTheme()" id="theme-btn" title="Theme">&#9790;</button>
       <button class="btn-ctrl" onclick="exportScreenshot()" title="Export">&#128248;</button>
       <button class="btn-ctrl" onclick="toggleSettings()" title="Einstellungen" style="font-size:16px">&#9881;</button>
+      <div class="power-menu">
+        <button class="btn-ctrl power-btn" onclick="togglePowerMenu()" title="Power" style="font-size:16px;color:var(--danger)">&#9211;</button>
+        <div class="power-dropdown" id="power-dropdown">
+          <button class="power-item" onclick="doPower('shutdown')">&#9211; Herunterfahren</button>
+          <button class="power-item" onclick="doPower('reboot')">&#8635; Neustart</button>
+          <button class="power-item power-item-danger" onclick="doPower('reset')">&#9889; Hard Reset</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2707,6 +2737,31 @@ function copyDeviceInfo() {
     ta.value = info; document.body.appendChild(ta); ta.select();
     document.execCommand('copy'); document.body.removeChild(ta);
     toast('Geräte-Info kopiert!', 'success');
+  });
+}
+
+// ---- POWER MENU ----
+function togglePowerMenu() {
+  const dd = document.getElementById('power-dropdown');
+  dd.classList.toggle('show');
+}
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.power-menu')) {
+    document.getElementById('power-dropdown')?.classList.remove('show');
+  }
+});
+
+function doPower(action) {
+  document.getElementById('power-dropdown').classList.remove('show');
+  const labels = { shutdown: 'Herunterfahren', reboot: 'Neustart', reset: 'Hard Reset' };
+  const cmds = { shutdown: 'poweroff', reboot: 'reboot', reset: 'echo b > /proc/sysrq-trigger' };
+  const msg = action === 'reset'
+    ? 'ACHTUNG: Hard Reset erzwingt sofortigen Neustart ohne sauberes Herunterfahren!'
+    : `System wird jetzt ${action === 'shutdown' ? 'heruntergefahren' : 'neu gestartet'}.`;
+
+  confirm2(labels[action], msg, async () => {
+    toast(labels[action] + '...', 'info', 5000);
+    await api('terminal', { command: cmds[action] });
   });
 }
 
