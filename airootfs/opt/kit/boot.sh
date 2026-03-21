@@ -139,6 +139,31 @@ start_gui() {
     fi
 }
 
+# ========== NETWORK INIT ==========
+clear
+echo ""
+echo -e "${TEAL}    flowbit OS${RESET} ${DIM}v${CURRENT_VER}${RESET}"
+echo ""
+
+# Ensure NetworkManager is running
+if command -v nmcli &>/dev/null; then
+    systemctl start NetworkManager 2>/dev/null
+fi
+
+# Wait for IP (max 8s, break early)
+echo -ne "${DIM}    Netzwerk: "
+for i in $(seq 1 8); do
+    IP=$(get_ip)
+    if [ -n "$IP" ]; then
+        echo -e "${TEAL}${IP}${RESET}"
+        break
+    fi
+    echo -n "."
+    sleep 1
+done
+[ -z "$IP" ] && echo -e "${YELLOW}kein Netzwerk${RESET}"
+sleep 1
+
 # ========== MAIN MENU ==========
 while true; do
     clear
