@@ -32,8 +32,8 @@
   --glow-orange: rgba(245,158,11,0.30);
   --glow-pink: rgba(236,72,153,0.35);
   --glow-cyan: rgba(6,182,212,0.32);
-  --font-display: 'JetBrains Mono', monospace;
-  --font-ui: 'Outfit', sans-serif;
+  --font-display: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  --font-ui: 'Outfit', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --shadow-glass: 0 8px 32px rgba(0,0,0,0.5), 0 1px 0 rgba(255,255,255,0.08) inset;
   --shadow-glow: 0 0 20px rgba(0,212,170,0.2);
   --glass: blur(20px) saturate(1.8);
@@ -114,6 +114,9 @@ body::before {
   padding: 4px; background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius) var(--radius) 0 0; backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+}
+.nav-main.no-sub {
+  border-radius: var(--radius); margin-bottom: 28px;
 }
 .nav-tab {
   padding: 10px 20px; border: none; background: transparent;
@@ -465,7 +468,7 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
         <span class="header-badge" id="h-serial">...</span>
       </div>
       <span class="header-time" id="h-time"></span>
-      <span class="version-badge" id="sidebar-version">v3.1.0</span>
+      <span class="version-badge" id="header-version">v3.1.0</span>
       <button class="btn-ctrl" onclick="toggleLang()" id="lang-btn" title="Sprache">EN</button>
       <button class="btn-ctrl" onclick="toggleTheme()" id="theme-btn" title="Theme">&#9790;</button>
       <button class="btn-ctrl" onclick="exportScreenshot()" title="Export">&#128248;</button>
@@ -1350,9 +1353,11 @@ function showCategory(category) {
 
   if (category === 'dashboard') {
     subNav.innerHTML = '';
+    document.querySelector('.nav-main').classList.add('no-sub');
     showPage('dashboard');
     return;
   }
+  document.querySelector('.nav-main').classList.remove('no-sub');
 
   subNav.innerHTML = items.map((item, i) =>
     `<button class="nav-sub-btn${i === 0 ? ' active' : ''}" data-page="${item.id}">${item.label}</button>`
@@ -1620,7 +1625,7 @@ function exportScreenshot() {
   const title = document.querySelector('.nav-tab.active')?.textContent?.trim() || 'Export';
   toast('Screenshot wird erstellt...', 'info');
   html2canvas(target, {
-    backgroundColor: '#10131a',
+    backgroundColor: getComputedStyle(document.body).getPropertyValue('--bg-primary').trim() || '#10131a',
     scale: 2,
     useCORS: true,
     logging: false
@@ -2275,7 +2280,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 't' || e.key === 'T') { toggleTheme(); return; }
   if (e.key === 'l' || e.key === 'L') { toggleLang(); return; }
   if (e.key === '?' || (e.key === 'h' && !e.ctrlKey)) {
-    toast('Shortcuts: 1-9 Module | R Refresh | T Theme | L Sprache | ? Hilfe', 'info', 6000);
+    toast('Shortcuts: Diagnose / Datenträger / Netzwerk / Windows / Remote / System | R Refresh | T Theme | L Sprache | ? Hilfe', 'info', 6000);
   }
 });
 
@@ -2709,7 +2714,7 @@ async function initUpdateCheck() {
   if (r && r.update_available) {
     const banner = document.createElement('div');
     banner.id = 'update-banner';
-    banner.style.cssText = 'background:linear-gradient(90deg,rgba(0,212,170,0.15),rgba(6,182,212,0.1));border:1px solid var(--accent);border-radius:8px;padding:10px 16px;margin:12px 24px 0;display:flex;align-items:center;justify-content:space-between;cursor:pointer';
+    banner.style.cssText = 'background:linear-gradient(90deg,var(--accent-dim),rgba(6,182,212,0.1));border:1px solid var(--accent);border-radius:8px;padding:10px 16px;margin:12px 24px 0;display:flex;align-items:center;justify-content:space-between;cursor:pointer';
     banner.innerHTML = `<span>🔄 <strong>flowbit OS v${r.latest_version}</strong> verfügbar!</span><button class="btn btn-sm" onclick="showPage('update');checkUpdate()">Update</button>`;
     const dashPage = document.getElementById('page-dashboard');
     if (dashPage) dashPage.prepend(banner);
@@ -2945,6 +2950,9 @@ function loadSettings() {
 renderThemeGrid();
 setTimeout(loadSettings, 100);
 
+// Init — Dashboard is default, so nav-main starts with full border-radius
+document.querySelector('.nav-main').classList.add('no-sub');
+
 // Init
 loadSysinfo();
 setInterval(loadSysinfo, 30000);
@@ -2953,7 +2961,7 @@ initUpdateCheck();
 fetch('/api/version').then(r=>r.json()).then(r=>{
   const el = document.getElementById('update-current-ver');
   if(el) el.textContent = r.version || '?';
-  const sv = document.getElementById('sidebar-version');
+  const sv = document.getElementById('header-version');
   if(sv) sv.textContent = r.version || 'v?';
 });
 
