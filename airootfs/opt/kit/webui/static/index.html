@@ -232,7 +232,39 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 12px rg
 
 .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; filter: drop-shadow(0 0 4px var(--accent-glow)); }
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Temperature Gauge */
+.gauge-container { display: flex; flex-direction: column; align-items: center; padding: 16px; }
+.gauge-svg { width: 140px; height: 100px; }
+.gauge-bg { fill: none; stroke: rgba(255,255,255,0.06); stroke-width: 10; stroke-linecap: round; }
+.gauge-fill { fill: none; stroke-width: 10; stroke-linecap: round; transition: stroke-dashoffset 0.8s ease, stroke 0.5s; }
+.gauge-text { font-family: var(--font-display); font-size: 24px; font-weight: 700; fill: var(--text-bright); text-anchor: middle; }
+.gauge-label { font-family: var(--font-ui); font-size: 11px; fill: var(--text-dim); text-anchor: middle; }
+.gauge-unit { font-family: var(--font-display); font-size: 11px; fill: var(--text-dim); text-anchor: middle; }
+.gauge-limits { font-family: var(--font-display); font-size: 9px; fill: var(--text-dim); text-anchor: middle; }
+
+/* Fan Blade Animation */
+.fan-svg { width: 80px; height: 80px; }
+.fan-blade { fill: var(--accent); opacity: 0.85; transform-origin: 50% 50%; }
+.fan-center { fill: var(--bg-card); stroke: var(--accent); stroke-width: 1.5; }
+.fan-ring { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 2; }
+.fan-spin { animation: spin-fan var(--fan-duration, 2s) linear infinite; transform-origin: 50% 50%; }
 @keyframes spin-fan { to { transform: rotate(360deg); } }
+
+/* Fan Card */
+.fan-card {
+  text-align: center; padding: 20px;
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-glass); transition: all 0.2s;
+}
+.fan-card:hover { border-color: rgba(0,212,170,0.2); }
+.fan-rpm { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--text-bright); margin: 8px 0 4px; }
+.fan-label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+.fan-slider-wrap { margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); }
+.fan-slider-labels { display: flex; justify-content: space-between; font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+
+/* Temp History Mini Chart */
+.temp-history { margin-top: 8px; }
+.temp-history canvas { width: 100%; height: 30px; }
 
 .progress-wrap { margin: 10px 0; }
 .progress-bar { height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; }
@@ -1261,12 +1293,19 @@ $ </div>
     <div class="card">
       <div class="card-header">
         <div class="card-title">Temperaturen & Lüfter</div>
-        <button class="btn btn-sm btn-outline" onclick="loadHwmon()">Aktualisieren</button>
+        <div style="display:flex;gap:8px">
+          <span class="badge badge-info" id="hwmon-status">Live</span>
+          <button class="btn btn-sm btn-outline" onclick="loadHwmon()">Aktualisieren</button>
+        </div>
       </div>
       <div class="section-title">Temperaturen</div>
-      <div class="grid-4" id="temp-cards"></div>
-      <div class="section-title" style="margin-top:20px">Lüfter</div>
-      <div class="grid-3" id="fan-cards"></div>
+      <div class="grid-4" id="temp-cards">
+        <p style="color:var(--text-dim)">Lade Sensoren...</p>
+      </div>
+      <div class="section-title" style="margin-top:24px">Lüfter</div>
+      <div class="grid-3" id="fan-cards">
+        <p style="color:var(--text-dim)">Lade Lüfter...</p>
+      </div>
     </div>
   </div>
 
@@ -2992,46 +3031,153 @@ function loadSettings() {
   renderThemeGrid();
 }
 
-// ---- HWMON (Temperaturen & Lüfter) ----
+// ---- HWMON (Temperature & Fan Monitoring) ----
 let hwmonInterval = null;
+const tempHistory = {};
+
+function createGaugeSVG(value, max, label, unit) {
+    const crit = max || 100;
+    const pct = Math.min(1, Math.max(0, value / crit));
+    // Arc from -135deg to +135deg (270deg total)
+    const radius = 45;
+    const circumference = radius * Math.PI * 1.5; // 270 degrees
+    const offset = circumference * (1 - pct);
+
+    // Color: green -> yellow -> red
+    let color;
+    if (pct < 0.6) color = '#00d4aa';
+    else if (pct < 0.8) color = '#f59e0b';
+    else color = '#ef4444';
+
+    // Glow effect
+    const glow = pct >= 0.8 ? `filter: drop-shadow(0 0 8px ${color})` : '';
+
+    return `<svg viewBox="0 0 120 80" class="gauge-svg">
+        <defs>
+            <linearGradient id="gg-${label.replace(/\s/g,'')}" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#00d4aa"/>
+                <stop offset="60%" style="stop-color:#f59e0b"/>
+                <stop offset="100%" style="stop-color:#ef4444"/>
+            </linearGradient>
+        </defs>
+        <!-- Background arc -->
+        <path d="M 15 70 A 45 45 0 1 1 105 70" class="gauge-bg"/>
+        <!-- Value arc -->
+        <path d="M 15 70 A 45 45 0 1 1 105 70" class="gauge-fill"
+            style="stroke:${color}; stroke-dasharray:${circumference}; stroke-dashoffset:${offset}; ${glow}"/>
+        <!-- Value text -->
+        <text x="60" y="52" class="gauge-text">${Math.round(value)}</text>
+        <text x="60" y="66" class="gauge-unit">${unit}</text>
+    </svg>`;
+}
+
+function createFanSVG(rpm) {
+    const spinning = rpm > 0;
+    const duration = spinning ? Math.max(0.08, 2000 / rpm) : 0;
+    const blades = 5;
+    let bladePaths = '';
+    for (let i = 0; i < blades; i++) {
+        const angle = (360 / blades) * i;
+        bladePaths += `<path class="fan-blade" d="M 50 50 Q ${50 + 15 * Math.cos((angle-30)*Math.PI/180)} ${50 + 15 * Math.sin((angle-30)*Math.PI/180)} ${50 + 35 * Math.cos(angle*Math.PI/180)} ${50 + 35 * Math.sin(angle*Math.PI/180)} Q ${50 + 15 * Math.cos((angle+30)*Math.PI/180)} ${50 + 15 * Math.sin((angle+30)*Math.PI/180)} 50 50 Z"/>`;
+    }
+    return `<svg viewBox="0 0 100 100" class="fan-svg">
+        <circle cx="50" cy="50" r="46" class="fan-ring"/>
+        <g class="${spinning ? 'fan-spin' : ''}" style="--fan-duration:${duration.toFixed(2)}s">
+            ${bladePaths}
+        </g>
+        <circle cx="50" cy="50" r="8" class="fan-center"/>
+    </svg>`;
+}
+
+function addTempHistory(label, value) {
+    if (!tempHistory[label]) tempHistory[label] = [];
+    tempHistory[label].push(value);
+    if (tempHistory[label].length > 30) tempHistory[label].shift();
+}
+
+function drawTempMiniChart(canvasId, label) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas || !tempHistory[label] || tempHistory[label].length < 2) return;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.offsetWidth * 2;
+    const h = canvas.height = 60;
+    ctx.clearRect(0, 0, w, h);
+    const values = tempHistory[label];
+    const max = Math.max(...values, 50);
+    const min = Math.min(...values, 20);
+    const range = max - min || 1;
+    const step = w / (values.length - 1);
+
+    // Gradient fill
+    const grad = ctx.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0, 'rgba(0,212,170,0.15)');
+    grad.addColorStop(1, 'rgba(0,212,170,0)');
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    values.forEach((v, i) => {
+        const x = i * step;
+        const y = h - ((v - min) / range) * (h - 4);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    values.forEach((v, i) => {
+        const x = i * step;
+        const y = h - ((v - min) / range) * (h - 4);
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = '#00d4aa';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
 async function loadHwmon() {
     const r = await api('hwmon');
-    // Render temperature cards
-    const tempHtml = (r.temperatures || []).map(t => {
-        const color = t.temp >= 80 ? 'var(--danger)' : t.temp >= 60 ? 'var(--warning)' : 'var(--accent)';
-        const pct = Math.min(100, (t.temp / (t.critical || 100)) * 100);
-        return `<div class="stat-card">
-            <div class="stat-label">${t.label || 'Sensor'}</div>
-            <div class="stat-value" style="color:${color}">${t.temp.toFixed(0)}°C</div>
-            <div class="progress-bar" style="margin-top:10px;height:4px">
-                <div style="width:${pct}%;height:100%;border-radius:2px;background:${color};transition:width 0.5s"></div>
-            </div>
-            <div class="stat-sub">${t.high ? 'Max: ' + t.high + '°C' : ''} ${t.critical ? '/ Krit: ' + t.critical + '°C' : ''}</div>
-        </div>`;
-    }).join('') || '<p style="color:var(--text-dim)">Keine Temperatursensoren gefunden</p>';
-    document.getElementById('temp-cards').innerHTML = tempHtml;
 
-    // Render fan cards with spinning animation
-    const fanHtml = (r.fans || []).map((f, i) => {
-        const speed = f.rpm > 0 ? Math.max(0.1, 3000 / f.rpm) : 0;
-        const animStyle = f.rpm > 0 ? `animation: spin-fan ${speed.toFixed(2)}s linear infinite` : 'animation: none';
-        return `<div class="stat-card" style="text-align:center">
-            <div class="stat-label">${f.label || 'Lüfter ' + (i+1)}</div>
-            <div style="${animStyle};font-size:40px;margin:8px 0;display:inline-block">🌀</div>
-            <div class="stat-value" style="font-size:24px">${f.rpm} RPM</div>
+    // Temperature cards with gauges
+    const temps = r.temperatures || [];
+    document.getElementById('temp-cards').innerHTML = temps.length ? temps.map((t, i) => {
+        const safeLabel = (t.label || 'Sensor ' + i).replace(/[^a-zA-Z0-9]/g, '_');
+        addTempHistory(safeLabel, t.temp);
+        return `<div class="stat-card gauge-container">
+            <div class="stat-label">${t.label || 'Sensor ' + i}</div>
+            ${createGaugeSVG(t.temp, t.critical || 100, t.label || 'S' + i, '°C')}
+            <div class="temp-history"><canvas id="tc-${safeLabel}" style="width:100%;height:30px"></canvas></div>
+            <div class="stat-sub">${t.high ? 'Max: ' + t.high + '°C' : ''} ${t.critical ? '| Krit: ' + t.critical + '°C' : ''}</div>
+        </div>`;
+    }).join('') : '<div class="stat-card" style="grid-column:1/-1;text-align:center;padding:30px"><div style="font-size:32px;margin-bottom:8px">🌡️</div><div style="color:var(--text-dim)">Keine Temperatursensoren gefunden</div></div>';
+
+    // Draw mini charts
+    temps.forEach((t, i) => {
+        const safeLabel = (t.label || 'Sensor ' + i).replace(/[^a-zA-Z0-9]/g, '_');
+        setTimeout(() => drawTempMiniChart('tc-' + safeLabel, safeLabel), 50);
+    });
+
+    // Fan cards with animated blades
+    const fans = r.fans || [];
+    document.getElementById('fan-cards').innerHTML = fans.length ? fans.map((f, i) => {
+        return `<div class="fan-card">
+            <div class="fan-label">${f.label || 'Lüfter ' + (i+1)}</div>
+            ${createFanSVG(f.rpm)}
+            <div class="fan-rpm">${f.rpm.toLocaleString()} RPM</div>
             ${f.pwm !== undefined ? `
-                <div style="margin-top:12px">
+                <div class="fan-slider-wrap">
                     <input type="range" class="glow-speed-slider" min="0" max="255" value="${f.pwm || 0}"
-                        oninput="setFanSpeed('${f.hwmon}','${f.pwm_file}',this.value)" style="width:100%">
-                    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim)">
+                        oninput="setFanSpeed('${f.hwmon}','${f.pwm_file}',this.value);this.nextElementSibling.children[1].textContent=this.value+'/255'"
+                        style="width:100%">
+                    <div class="fan-slider-labels">
                         <span>Leise</span><span>${f.pwm || 0}/255</span><span>Max</span>
                     </div>
-                    <button class="btn btn-sm btn-outline" onclick="resetFanAuto('${f.hwmon}','${f.pwm_file}')" style="margin-top:6px;width:100%">Auto</button>
+                    <button class="btn btn-sm btn-outline" onclick="resetFanAuto('${f.hwmon}','${f.pwm_file}')" style="margin-top:8px;width:100%">Automatik</button>
                 </div>
-            ` : '<div class="stat-sub">Nicht steuerbar</div>'}
+            ` : ''}
         </div>`;
-    }).join('') || '<p style="color:var(--text-dim)">Keine Lüfter gefunden</p>';
-    document.getElementById('fan-cards').innerHTML = fanHtml;
+    }).join('') : '<div class="fan-card" style="grid-column:1/-1;padding:30px"><div style="font-size:32px;margin-bottom:8px">💨</div><div style="color:var(--text-dim)">Keine Lüfter gefunden</div></div>';
 }
 
 async function setFanSpeed(hwmon, pwm, value) {
@@ -3039,7 +3185,7 @@ async function setFanSpeed(hwmon, pwm, value) {
 }
 async function resetFanAuto(hwmon, pwm) {
     await api('hwmon/fan/auto', {device: hwmon, fan: pwm});
-    toast('Lüfter auf Auto zurückgesetzt', 'info');
+    toast('Lüfter auf Automatik zurückgesetzt', 'info');
     loadHwmon();
 }
 
