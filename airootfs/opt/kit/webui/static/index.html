@@ -68,9 +68,13 @@ body::before {
   50% { transform: scale(1.05) translate(-1%, 1%); opacity: 0.9; }
   100% { transform: scale(1) translate(1%, -1%); opacity: 1; }
 }
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(0,212,170,0.3); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,212,170,0.5); }
+body.light ::-webkit-scrollbar-track { background: rgba(0,0,0,0.05); }
+body.light ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); }
+body.light ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.35); }
 
 /* ---- HUB-STYLE CENTERED LAYOUT ---- */
 .app {
@@ -107,7 +111,7 @@ body::before {
   background: var(--bg-card); color: var(--text-dim); cursor: pointer;
   font-size: 14px; display: flex; align-items: center; justify-content: center; transition: all 0.15s;
 }
-.btn-ctrl:hover { background: var(--bg-card-hover); color: var(--text); }
+.btn-ctrl:hover { background: var(--bg-card-hover); color: var(--text); border-color: rgba(0,212,170,0.3); box-shadow: 0 0 8px rgba(0,212,170,0.1); }
 
 /* Main Navigation Tabs */
 .nav-main {
@@ -165,9 +169,9 @@ body.light .nav-sub { background: rgba(255,255,255,0.5); }
 .card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .card-title { font-size: 15px; font-weight: 600; color: var(--text-bright); display: flex; align-items: center; gap: 8px; }
 
-.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
-.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
-.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; }
 @media (max-width: 1200px) { .grid-3 { grid-template-columns: repeat(2,1fr); } }
 @media (max-width: 900px) { .grid-2,.grid-3,.grid-4 { grid-template-columns: 1fr; } }
 
@@ -316,14 +320,14 @@ body.light {
   --bg-card: rgba(255, 255, 255, 0.65);
   --bg-card-hover: rgba(255, 255, 255, 0.80);
   --bg-input: rgba(220, 224, 230, 0.9);
-  --border: rgba(0,0,0,0.08);
+  --border: rgba(0,0,0,0.12);
   --accent: #00b894;
   --accent-glow: rgba(0,184,148,0.2);
   --accent-dim: rgba(0,184,148,0.1);
-  --text: #1a1d26;
-  --text-dim: #5a6070;
+  --text: #1a1a1a;
+  --text-dim: #444a58;
   --text-bright: #111827;
-  --shadow-glass: 0 8px 32px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.9) inset;
+  --shadow-glass: 0 2px 8px rgba(0,0,0,0.08), 0 1px 0 rgba(255,255,255,0.9) inset;
   --shadow-glow: 0 0 20px rgba(0,184,148,0.15);
   --glow-teal: rgba(0,212,170,0.30);
   --glow-blue: rgba(59,130,246,0.25);
@@ -332,10 +336,16 @@ body.light {
   --glow-pink: rgba(236,72,153,0.18);
   --glow-cyan: rgba(6,182,212,0.15);
 }
-body.light .terminal { background: #f8f9fa; color: #1a1d26; }
+body.light .card { border: 1px solid rgba(0,0,0,0.12); box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+body.light .terminal { background: #f8f9fa; color: #1a1a1a; border: 1px solid rgba(0,0,0,0.12); }
 body.light .confirm-box { background: rgba(255,255,255,0.95); }
-body.light .btn-outline:hover { border-color: rgba(0,0,0,0.15); }
-body.light .toast { color: #1a1d26; }
+body.light .btn-outline:hover { border-color: rgba(0,0,0,0.2); }
+body.light .btn-outline { border: 1px solid rgba(0,0,0,0.15); }
+body.light .btn { border: 1px solid rgba(0,0,0,0.1); }
+body.light input[type="text"], body.light input[type="number"], body.light input[type="password"], body.light select { border: 1px solid rgba(0,0,0,0.15); }
+body.light .nav-main { border-bottom: 1px solid rgba(0,0,0,0.1); }
+body.light .header { border-bottom: 1px solid rgba(0,0,0,0.1); }
+body.light .toast { color: #1a1a1a; }
 
 .toast-container {
   position: fixed; top: 20px; right: 20px; z-index: 600;
@@ -507,8 +517,7 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
       <span class="version-badge" id="header-version">v3.1.0</span>
       <button class="btn-ctrl" onclick="toggleLang()" id="lang-btn" title="Sprache">EN</button>
       <button class="btn-ctrl" onclick="toggleTheme()" id="theme-btn" title="Theme">&#9790;</button>
-      <button class="btn-ctrl" onclick="exportScreenshot()" title="Export">&#128248;</button>
-      <button class="btn-ctrl" onclick="toggleSettings()" title="Einstellungen" style="font-size:16px">&#9881;</button>
+      <button class="btn-ctrl" onclick="toggleSettings()" title="Einstellungen" style="font-size:20px;width:auto;padding:0 12px;gap:6px">&#9881; <span style="font-size:13px;font-family:var(--font-ui)">Settings</span></button>
       <div class="power-menu">
         <button class="btn-ctrl power-btn" onclick="togglePowerMenu()" title="Power" style="font-size:16px;color:var(--danger)">&#9211;</button>
         <div class="power-dropdown" id="power-dropdown">
@@ -590,6 +599,24 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
       <div class="stat-card" id="spark-ram"><div class="stat-label">RAM</div><div class="stat-value" id="s-ram">...</div><div class="stat-sub" id="s-ram-sub"></div></div>
       <div class="stat-card"><div class="stat-label">Datenträger</div><div class="stat-value" id="s-disks">...</div><div class="stat-sub" id="s-disks-sub"></div></div>
       <div class="stat-card"><div class="stat-label">Netzwerk</div><div class="stat-value" id="s-net">...</div><div class="stat-sub" id="s-net-sub"></div></div>
+    </div>
+    <div class="grid-4" id="dash-extras" style="margin-top:16px">
+      <div class="stat-card" style="padding:12px">
+        <div class="stat-label" style="font-size:11px">CPU Temperatur</div>
+        <div id="dash-temp-badge" style="margin-top:6px"><span class="badge badge-info">...</span></div>
+      </div>
+      <div class="stat-card" style="padding:12px">
+        <div class="stat-label" style="font-size:11px">Netzwerk-Info</div>
+        <div id="dash-net-info" style="margin-top:4px;font-size:12px;color:var(--text-dim);line-height:1.6">Lade...</div>
+      </div>
+      <div class="stat-card" style="padding:12px">
+        <div class="stat-label" style="font-size:11px">System-Info</div>
+        <div id="dash-sys-info" style="margin-top:4px;font-size:12px;color:var(--text-dim);line-height:1.6">Lade...</div>
+      </div>
+      <div class="stat-card" style="padding:12px">
+        <div class="stat-label" style="font-size:11px">Disk-Gesundheit</div>
+        <div id="dash-disk-health" style="margin-top:4px;font-size:12px;line-height:1.6">Lade...</div>
+      </div>
     </div>
     <div class="card" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
       <div>
@@ -824,7 +851,7 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
     </div>
     <div class="card">
       <div class="card-title">SMART Details</div>
-      <div class="terminal" id="smart-out" style="min-height:200px;margin-top:10px">Disk auswählen...</div>
+      <div class="terminal" id="smart-out" style="min-height:200px;max-height:400px;overflow-y:auto;margin-top:10px;font-family:var(--font-display);font-size:12px;line-height:1.6;letter-spacing:0.3px">Disk auswählen...</div>
     </div>
   </div>
 
@@ -866,7 +893,7 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
 
   <!-- BIOS TOOLS -->
   <div class="page" id="page-bios">
-    <div class="grid-2">
+    <div class="grid-2" style="margin-bottom:16px">
       <div class="card">
         <div class="card-title">BIOS Firmware</div>
         <div class="info-grid" id="info-bios-detail" style="margin-top:10px"></div>
@@ -876,7 +903,7 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
         <div id="bios-security" style="margin-top:10px"></div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:16px">
       <div class="card-header">
         <div class="card-title">BIOS Settings</div>
         <div class="actions" style="margin:0">
@@ -885,12 +912,12 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
         </div>
       </div>
       <div id="bios-settings-status" style="color:var(--text-dim);font-size:13px;margin-bottom:10px"></div>
-      <div class="table-wrap"><table id="tbl-bios-settings">
+      <div class="table-wrap" style="max-height:500px;overflow-y:auto"><table id="tbl-bios-settings">
         <thead><tr><th>Setting</th><th>Aktueller Wert</th><th>Standard</th><th>Optionen</th></tr></thead>
         <tbody></tbody>
       </table></div>
     </div>
-    <div class="card">
+    <div class="card" style="margin-bottom:16px">
       <div class="card-header">
         <div class="card-title">BIOS Profile</div>
         <div class="actions" style="margin:0">
@@ -1613,7 +1640,56 @@ function updateDashboard() {
   if (summary) {
     summary.textContent = `${s.manufacturer || ''} ${s.model || ''} | SN: ${s.serial || '?'} | ${s.cpu ? s.cpu.split('@')[0].trim().split(' ').slice(-3).join(' ') : '?'} | ${s.ram_total || '?'} RAM`;
   }
+  // Dashboard extras: Temperature badge
+  const tempVal = parseFloat((s.cpu_temp||'0').replace(/[^0-9.]/g,'')) || 0;
+  const tempEl = document.getElementById('dash-temp-badge');
+  if (tempEl) {
+    if (tempVal > 0) {
+      const cls = tempVal >= 80 ? 'badge-danger' : tempVal >= 60 ? 'badge-warning' : 'badge-success';
+      tempEl.innerHTML = `<span class="badge ${cls}" style="font-size:18px;padding:6px 14px">${s.cpu_temp}</span>`;
+    } else {
+      tempEl.innerHTML = '<span class="badge badge-info">N/A</span>';
+    }
+  }
+
+  // Dashboard extras: Network info
+  const netInfoEl = document.getElementById('dash-net-info');
+  if (netInfoEl) {
+    const activeIf = (s.interfaces||[]).find(i=>i.state==='up') || {};
+    netInfoEl.innerHTML = `<div><strong>IP:</strong> ${activeIf.ip || 'keine'}</div>
+      <div><strong>Gateway:</strong> ${s.gateway || 'N/A'}</div>
+      <div><strong>DNS:</strong> ${s.dns_server || 'N/A'}</div>
+      <div><strong>Speed:</strong> ${activeIf.speed && activeIf.speed !== '?' ? activeIf.speed + ' Mbit/s' : 'N/A'}</div>
+      <div><strong>MAC:</strong> <span style="font-family:monospace;font-size:11px">${activeIf.mac || 'N/A'}</span></div>`;
+  }
+
+  // Dashboard extras: System info
+  const sysInfoEl = document.getElementById('dash-sys-info');
+  if (sysInfoEl) {
+    sysInfoEl.innerHTML = `<div><strong>Uptime:</strong> ${(s.uptime||'N/A').replace('up ','')}</div>
+      <div><strong>Boot:</strong> ${s.boot_mode || 'N/A'}</div>
+      <div><strong>Kernel:</strong> ${s.kernel || 'N/A'}</div>
+      <div><strong>Host:</strong> ${s.hostname || 'N/A'}</div>`;
+  }
+
+  // Dashboard extras: Disk health (async)
+  updateDashDiskHealth();
 }
+
+async function updateDashDiskHealth() {
+  const el = document.getElementById('dash-disk-health');
+  if (!el) return;
+  try {
+    const r = await api('smart/dashboard');
+    if (!r.disks || !r.disks.length) { el.innerHTML = '<span style="color:var(--text-dim)">Keine Disks</span>'; return; }
+    el.innerHTML = r.disks.map(d => {
+      const icon = (d.health === 'PASSED' || d.health === 'OK') ? '&#10004;' : d.health === 'FAILED' ? '&#10060;' : '&#9888;';
+      const color = (d.health === 'PASSED' || d.health === 'OK') ? 'var(--success)' : d.health === 'FAILED' ? 'var(--danger)' : 'var(--warning)';
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span>${d.name}</span><span style="color:${color}">${icon} ${d.health||'?'}</span></div>`;
+    }).join('');
+  } catch(e) { el.innerHTML = '<span style="color:var(--text-dim)">Fehler</span>'; }
+}
+
 
 function updateSysinfoPage() {
   const s = sysinfo;
@@ -1680,10 +1756,14 @@ function updateBiosPage() {
 
 function populateDiskSelects() {
   const disks = sysinfo.disks || [];
-  const opts = disks.map(d => `<option value="${d.name}">/dev/${d.name} (${d.type} ${d.size} ${d.model})</option>`).join('');
+  const bootDev = sysinfo.boot_device || '';
+  // Exclude boot device (live USB) from wipe/erase targets to prevent accidental self-wipe
+  const wipeExcludeIds = ['wipe-disk', 'erase-disk'];
+  const allOpts = disks.map(d => `<option value="${d.name}">/dev/${d.name} (${d.type} ${d.size} ${d.model})</option>`).join('');
+  const safeOpts = disks.filter(d => d.name !== bootDev).map(d => `<option value="${d.name}">/dev/${d.name} (${d.type} ${d.size} ${d.model})</option>`).join('');
   ['wipe-disk','erase-disk','backup-source','restore-target','clone-source','clone-target','disktest-device','usbwrite-device','bitlocker-partition','part-create-disk','part-format-device','bootrepair-device'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.innerHTML = opts;
+    if (el) el.innerHTML = wipeExcludeIds.includes(id) ? safeOpts : allOpts;
   });
   populateMultiCloneTargets();
 }
@@ -2009,8 +2089,19 @@ function startMultiClone() {
 
 // ---- AUTOPILOT ----
 async function exportAutopilot() {
-  const r = await api('autopilot', {});
-  if (r.csv) downloadFile(r.filename || 'AutopilotHash.csv', r.csv);
+  try {
+    const r = await api('autopilot');
+    if (r.csv) {
+      downloadFile(r.filename || 'AutopilotHash.csv', r.csv);
+      toast('Autopilot CSV heruntergeladen (Referenz-Hash, nicht OA3Tool)', 'success', 6000);
+    } else if (r.error) {
+      toast('Autopilot Fehler: ' + r.error, 'error');
+    } else {
+      toast('Keine Autopilot-Daten verfügbar', 'warning');
+    }
+  } catch (e) {
+    toast('Autopilot Export fehlgeschlagen: ' + e.message, 'error');
+  }
 }
 
 // ---- WIFI ----
@@ -2461,7 +2552,10 @@ function createPartition() {
   });
 }
 function deletePartition(disk, part) {
-  const partnum = part.replace(/[^0-9]/g, '');
+  // Extract partition number: nvme0n1p1 → 1, sda1 → 1, sda12 → 12
+  const m = part.match(/p?(\d+)$/);
+  const partnum = m ? m[1] : '';
+  if (!partnum) { toast('Partitionsnummer konnte nicht ermittelt werden', 'error'); return; }
   confirm2('Partition löschen', `/dev/${part} wird gelöscht!`, async () => {
     const r = await api('partmgr/delete', {device: disk, partnum: parseInt(partnum)});
     toast(r.success ? 'Partition gelöscht' : 'Fehler: ' + (r.output||''), r.success ? 'success' : 'error');
@@ -3183,11 +3277,13 @@ async function loadHwmon() {
 
 async function setFanSpeed(hwmon, pwm, value) {
     await api('hwmon/fan', {device: hwmon, fan: pwm, value: parseInt(value)});
+    // Delay before refreshing RPM so hardware can settle
+    setTimeout(() => loadHwmon(), 500);
 }
 async function resetFanAuto(hwmon, pwm) {
     await api('hwmon/fan/auto', {device: hwmon, fan: pwm});
     toast('Lüfter auf Automatik zurückgesetzt', 'info');
-    loadHwmon();
+    setTimeout(() => loadHwmon(), 500);
 }
 
 // ---- WIPE CERTIFICATE ----

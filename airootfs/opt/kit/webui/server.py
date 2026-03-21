@@ -167,6 +167,8 @@ def get_system_info():
     info["ram_free"] = run_cmd("free -h | awk '/^Mem:/{print $4}'")
     info["kernel"] = run_cmd("uname -r")
     info["uptime"] = run_cmd("uptime -p")
+    info["gateway"] = run_cmd("ip route | awk '/default/{print $3}' | head -1", "N/A")
+    info["dns_server"] = run_cmd("awk '/^nameserver/{print $2; exit}' /etc/resolv.conf", "N/A")
 
     # CPU temp
     info["cpu_temp"] = run_cmd("sensors 2>/dev/null | grep -m1 'Package\\|Tctl\\|Core 0' | awk '{print $NF}'", "N/A")
@@ -220,6 +222,18 @@ def get_system_info():
     except:
         pass
     info["disks"] = disks
+
+    # Detect boot device so the UI can exclude it from wipe targets
+    try:
+        boot_info = get_boot_device()
+        if boot_info.get("found"):
+            # Extract disk name (e.g. "sdb" from "/dev/sdb")
+            boot_dev = boot_info.get("device", "")
+            info["boot_device"] = boot_dev.replace("/dev/", "") if boot_dev else ""
+        else:
+            info["boot_device"] = ""
+    except:
+        info["boot_device"] = ""
 
     # Partitions
     partitions = []
