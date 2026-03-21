@@ -118,6 +118,16 @@ start_gui() {
     fi
 }
 
+# ---- Wait for network ----
+echo -e "${DIM}    Warte auf Netzwerk...${RESET}"
+for i in $(seq 1 15); do
+    if ip route 2>/dev/null | grep -q default; then
+        echo -e "${DIM}    Netzwerk bereit.${RESET}"
+        break
+    fi
+    sleep 1
+done
+
 # ---- Initial update check ----
 check_update
 
