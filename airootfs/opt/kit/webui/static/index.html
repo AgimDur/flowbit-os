@@ -1233,17 +1233,12 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
       </div>
       <div id="update-result" style="margin-top:16px;display:none"></div>
       <div id="update-progress" style="margin-top:16px;display:none">
-        <div style="font-size:14px;margin-bottom:8px" id="update-status-text">Lade herunter...</div>
+        <div style="font-size:14px;margin-bottom:8px;font-weight:600" id="update-status-text">Lade herunter...</div>
         <div style="background:var(--bg-input);border-radius:8px;height:24px;overflow:hidden;border:1px solid var(--border)">
           <div id="update-progress-bar" style="height:100%;background:linear-gradient(90deg,var(--accent),#6366f1);width:0%;transition:width 0.3s;border-radius:8px"></div>
         </div>
         <div style="font-size:12px;color:var(--text-dim);margin-top:4px" id="update-progress-text"></div>
-      </div>
-      <div id="update-flash" style="margin-top:20px;display:none">
-        <div class="card-title" style="font-size:15px">Update installieren</div>
-        <div id="update-bootdev-info" style="margin:12px 0"></div>
-        <button class="btn btn-danger" id="update-flash-btn" onclick="flashUpdate()" disabled>Update jetzt installieren</button>
-        <p style="color:var(--text-dim);font-size:11px;margin-top:8px">Nach dem Update muss das System neu gestartet werden.</p>
+        <div id="update-actions" style="margin-top:16px;display:none"></div>
       </div>
     </div>
   </div>
@@ -2616,90 +2611,97 @@ async function checkUpdate() {
 async function startUpdateDownload() {
   if (!updateData) return;
   document.getElementById('update-progress').style.display = 'block';
+  document.getElementById('update-status-text').textContent = 'Schritt 1/3: Lade ISO herunter...';
+  document.getElementById('update-actions').style.display = 'none';
   const r = await api('update/download', {url: updateData.iso_url, sha256: updateData.sha256});
   if (r.task_id) {
     updateTaskId = r.task_id;
+    updatePhase = 'downloading';
     pollUpdateProgress();
   }
 }
+
+let updatePhase = '';
 
 async function pollUpdateProgress() {
   if (!updateTaskId) return;
   const r = await fetch(`/api/update/progress?id=${updateTaskId}`).then(r=>r.json());
+
   if (r.status === 'downloading') {
     const pct = r.total > 0 ? (r.progress / r.total * 100).toFixed(1) : 0;
     document.getElementById('update-progress-bar').style.width = pct + '%';
+    document.getElementById('update-progress-bar').style.background = 'linear-gradient(90deg,var(--accent),#6366f1)';
     const dlMB = (r.progress / 1024 / 1024).toFixed(1);
     const totalMB = (r.total / 1024 / 1024).toFixed(1);
     document.getElementById('update-progress-text').textContent = `${dlMB} MB / ${totalMB} MB (${pct}%)`;
     setTimeout(pollUpdateProgress, 500);
-  } else if (r.status === 'done' && r.sha256) {
+
+  } else if (r.status === 'done' && updatePhase === 'downloading') {
     document.getElementById('update-progress-bar').style.width = '100%';
-    document.getElementById('update-status-text').textContent = 'Download abgeschlossen!';
-    document.getElementById('update-progress-text').textContent = `SHA256: ${r.sha256 || 'n/a'}`;
-    toast('Update heruntergeladen', 'success');
-    loadFlashDevices();
-  } else if (r.status === 'done' && !r.sha256) {
+    document.getElementById('update-status-text').textContent = 'Schritt 2/3: Download abgeschlossen!';
+    document.getElementById('update-progress-text').textContent = `SHA256 verifiziert: ${(r.sha256 || '').substring(0, 16)}...`;
+    toast('ISO heruntergeladen — bereit zum Installieren', 'success');
+    // Detect boot device and show install button
+    const bootdev = await fetch('/api/update/bootdev').then(r=>r.json());
+    const actions = document.getElementById('update-actions');
+    actions.style.display = 'block';
+    if (bootdev.found) {
+      selectedFlashDevice = bootdev.device;
+      actions.innerHTML = `
+        <div class="card" style="margin:0;padding:16px;border-color:var(--warning)">
+          <div style="display:flex;align-items:center;gap:12px">
+            <div style="font-size:28px">💾</div>
+            <div style="flex:1">
+              <div style="font-weight:700">Boot-Stick erkannt: ${bootdev.device}</div>
+              <div style="font-size:12px;color:var(--text-dim)">${bootdev.model || 'USB'} — ${bootdev.size || '?'}</div>
+            </div>
+            <button class="btn btn-danger" onclick="doFlashUpdate()">Jetzt installieren</button>
+          </div>
+        </div>`;
+    } else {
+      actions.innerHTML = `<p style="color:var(--danger)">Boot-Device nicht erkannt: ${bootdev.error || 'Kein USB-Stick gefunden'}</p>`;
+    }
+
+  } else if (r.status === 'flashing') {
+    document.getElementById('update-status-text').textContent = 'Schritt 3/3: Installiere auf USB-Stick...';
+    const pct = r.total > 0 ? (r.progress / r.total * 100).toFixed(1) : 0;
+    document.getElementById('update-progress-bar').style.width = pct + '%';
+    document.getElementById('update-progress-bar').style.background = 'linear-gradient(90deg,#f59e0b,#ef4444)';
+    document.getElementById('update-progress-text').textContent = r.total > 0 ? `${(r.progress/1024/1024).toFixed(0)} MB / ${(r.total/1024/1024).toFixed(0)} MB` : `${(r.progress/1024/1024).toFixed(0)} MB geschrieben...`;
+    document.getElementById('update-actions').style.display = 'none';
+    setTimeout(pollUpdateProgress, 1000);
+
+  } else if (r.status === 'done' && updatePhase === 'flashing') {
     document.getElementById('update-progress-bar').style.width = '100%';
     document.getElementById('update-progress-bar').style.background = 'var(--success)';
     document.getElementById('update-status-text').textContent = 'Update erfolgreich installiert!';
-    document.getElementById('update-progress-text').textContent = 'Bitte System neu starten um die neue Version zu laden.';
-    document.getElementById('update-flash-btn').textContent = 'Jetzt neu starten';
-    document.getElementById('update-flash-btn').onclick = () => { api('terminal', {command: 'reboot'}); };
-    document.getElementById('update-flash-btn').disabled = false;
-    toast('Update installiert — Neustart erforderlich', 'success');
+    document.getElementById('update-progress-text').textContent = '';
+    toast('Update installiert — Neustart erforderlich!', 'success');
+    const actions = document.getElementById('update-actions');
+    actions.style.display = 'block';
+    actions.innerHTML = `<button class="btn" onclick="api('terminal',{command:'reboot'})" style="width:100%;padding:14px;font-size:16px">Jetzt neu starten</button>`;
+
   } else if (r.status === 'error') {
     document.getElementById('update-status-text').textContent = 'Fehler: ' + (r.error || 'Unbekannt');
-    document.getElementById('update-progress-bar').style.width = '0%';
     document.getElementById('update-progress-bar').style.background = 'var(--danger)';
-    toast('Download fehlgeschlagen', 'error');
-  } else if (r.status === 'flashing') {
-    const pct = r.total > 0 ? (r.progress / r.total * 100).toFixed(1) : 0;
-    document.getElementById('update-progress-bar').style.width = pct + '%';
-    document.getElementById('update-status-text').textContent = 'Installiere Update...';
-    const flashPct = r.total > 0 ? (r.progress / r.total * 100).toFixed(1) : 0;
-    document.getElementById('update-progress-bar').style.width = flashPct + '%';
-    document.getElementById('update-progress-text').textContent = r.total > 0 ? `${(r.progress/1024/1024).toFixed(0)} MB / ${(r.total/1024/1024).toFixed(0)} MB` : `${(r.progress/1024/1024).toFixed(0)} MB geschrieben...`;
-    setTimeout(pollUpdateProgress, 1000);
+    toast('Update fehlgeschlagen: ' + (r.error || ''), 'error');
   }
 }
 
-async function loadFlashDevices() {
-  document.getElementById('update-flash').style.display = 'block';
-  const r = await fetch('/api/update/bootdev').then(r=>r.json());
-  const container = document.getElementById('update-bootdev-info');
-  if (r.found) {
-    selectedFlashDevice = r.device;
-    document.getElementById('update-flash-btn').disabled = false;
-    container.innerHTML = `
-      <div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid var(--border);border-radius:8px;background:var(--bg-input)">
-        <div style="font-size:28px">💾</div>
-        <div>
-          <div style="font-weight:700;color:var(--text-bright)">Boot-Stick erkannt: ${r.device}</div>
-          <div style="font-size:12px;color:var(--text-dim)">${r.model || 'USB'} — ${r.size || '?'}</div>
-          <div style="font-size:11px;color:var(--warning);margin-top:4px">Das Update wird direkt auf diesen Stick geschrieben. Danach Neustart.</div>
-        </div>
-      </div>`;
-  } else {
-    container.innerHTML = `<p style="color:var(--danger)">Boot-Device nicht erkannt: ${r.error || 'unbekannt'}</p>`;
-  }
-}
-
-async function flashUpdate() {
-  if (!selectedFlashDevice) return;
-  confirm2('Update installieren', `Das ISO auf ${selectedFlashDevice} wird überschrieben und das System aktualisiert. Fortfahren?`, () => { doFlashUpdate(); });
-}
 async function doFlashUpdate() {
   if (!selectedFlashDevice) return;
-  document.getElementById('update-progress').style.display = 'block';
-  document.getElementById('update-status-text').textContent = 'Installiere Update...';
-  document.getElementById('update-progress-bar').style.width = '0%';
-  document.getElementById('update-progress-bar').style.background = 'linear-gradient(90deg,var(--accent),#6366f1)';
-  const r = await api('update/flash', {device: selectedFlashDevice});
-  if (r.task_id) {
-    updateTaskId = r.task_id;
-    pollUpdateProgress();
-  }
+  confirm2('Update installieren', `Die ISO wird auf ${selectedFlashDevice} geschrieben. Alle Daten auf dem Stick werden überschrieben!`, async () => {
+    document.getElementById('update-status-text').textContent = 'Schritt 3/3: Installiere auf USB-Stick...';
+    document.getElementById('update-progress-bar').style.width = '0%';
+    document.getElementById('update-progress-bar').style.background = 'linear-gradient(90deg,#f59e0b,#ef4444)';
+    document.getElementById('update-actions').style.display = 'none';
+    const r = await api('update/flash', {device: selectedFlashDevice});
+    if (r.task_id) {
+      updateTaskId = r.task_id;
+      updatePhase = 'flashing';
+      pollUpdateProgress();
+    }
+  });
 }
 
 async function initUpdateCheck() {
