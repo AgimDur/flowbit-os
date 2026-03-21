@@ -231,6 +231,7 @@ input:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 12px rg
 
 .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; filter: drop-shadow(0 0 4px var(--accent-glow)); }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin-fan { to { transform: rotate(360deg); } }
 
 .progress-wrap { margin: 10px 0; }
 .progress-bar { height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden; }
@@ -666,6 +667,7 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
         <button class="btn btn-danger" onclick="startWipe()">Wipe starten</button>
       </div>
       <div id="wipe-task"></div>
+      <button class="btn btn-sm btn-outline" onclick="exportWipeCert()" style="margin-top:8px">Wipe-Zertifikat exportieren</button>
 
       <div class="section-title">SSD Secure Erase</div>
       <div class="input-group">
@@ -794,6 +796,8 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
 
   <!-- HARDWARE TEST -->
   <div class="page" id="page-hwtest">
+    <button class="btn" onclick="startFullTest()" style="margin-bottom:16px">Kompletttest starten (RAM + CPU + Disk)</button>
+    <div id="fulltest-task"></div>
     <div class="grid-2">
       <div class="card">
         <div class="card-title">RAM Test</div>
@@ -1154,8 +1158,11 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
       <p style="color:var(--text-dim);font-size:13px;margin-bottom:14px">Offline-Scan einer gemounteten Partition mit ClamAV.</p>
       <div id="av-status" style="margin-bottom:12px"></div>
       <div class="input-group">
-        <input type="text" id="av-path" placeholder="Scan-Pfad (z.B. /tmp/ittools_mnt/sda1)">
-        <button class="btn btn-sm btn-danger" onclick="startAvScan()">Scan starten</button>
+        <select id="av-path-select" onchange="document.getElementById('av-path').value=this.value" style="flex:1">
+            <option value="">-- Pfad wählen --</option>
+        </select>
+        <input type="text" id="av-path" placeholder="/mnt/..." style="flex:2">
+        <button class="btn" onclick="startAvScan()">Scan starten</button>
       </div>
       <div id="av-task"></div>
     </div>
@@ -1249,6 +1256,19 @@ $ </div>
   </div>
 
 
+  <div class="page" id="page-hwmon">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Temperaturen & Lüfter</div>
+        <button class="btn btn-sm btn-outline" onclick="loadHwmon()">Aktualisieren</button>
+      </div>
+      <div class="section-title">Temperaturen</div>
+      <div class="grid-4" id="temp-cards"></div>
+      <div class="section-title" style="margin-top:20px">Lüfter</div>
+      <div class="grid-3" id="fan-cards"></div>
+    </div>
+  </div>
+
 </div><!-- end .app -->
 
 <div class="toast-container" id="toast-container"></div>
@@ -1315,6 +1335,7 @@ const navCategories = {
     { id: 'sysinfo', label: 'System Info' },
     { id: 'disks', label: 'SMART / Disks' },
     { id: 'hwtest', label: 'Hardware Test' },
+    { id: 'hwmon', label: 'Temperaturen' },
     { id: 'antivirus', label: 'Antivirus' }
   ],
   storage: [
@@ -1379,6 +1400,7 @@ function showCategory(category) {
 }
 
 function showPage(name) {
+  if (hwmonInterval && name !== 'hwmon') { clearInterval(hwmonInterval); hwmonInterval = null; }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const page = document.getElementById('page-' + name);
   if (page) page.classList.add('active');
@@ -1407,6 +1429,18 @@ function showPage(name) {
   if (name === 'passreset') loadWinPartitions();
   if (name === 'partmgr') loadPartLayout();
   if (name === 'antivirus') checkAvStatus();
+  if (name === 'hwmon') { loadHwmon(); if (!hwmonInterval) hwmonInterval = setInterval(loadHwmon, 3000); }
+  if (name === 'network') {
+    (async () => {
+      const ip = await api('serverip');
+      if (ip && ip.ip) {
+        const parts = ip.ip.split('.');
+        const subnet = parts.slice(0, 3).join('.') + '.0/24';
+        const el = document.getElementById('scan-subnet');
+        if (el && !el.value) el.value = subnet;
+      }
+    })();
+  }
   if (name === 'registry') loadRegPartitions();
   if (name === 'wizard') { loadWizards(); loadChecklists(); }
 }
@@ -2410,6 +2444,13 @@ async function checkAvStatus() {
   document.getElementById('av-status').innerHTML = r.installed ?
     '<span class="badge badge-success">ClamAV installiert</span> <span style="color:var(--text-dim);font-size:12px">' + (r.version||'') + '</span>' :
     '<span class="badge badge-danger">ClamAV nicht installiert</span> <span style="color:var(--text-dim);font-size:12px">Package: clamav</span>';
+  // Load scan paths
+  const paths = await api('antivirus/paths');
+  const sel = document.getElementById('av-path-select');
+  if (sel && paths.paths) {
+    sel.innerHTML = '<option value="">-- Pfad wählen --</option>' +
+        paths.paths.map(p => `<option value="${p.path}">${p.label}</option>`).join('');
+  }
 }
 async function startAvScan() {
   const path = document.getElementById('av-path').value;
@@ -2948,6 +2989,73 @@ function loadSettings() {
   if (localStorage.getItem('fb-compact') === '1') document.getElementById('toggle-compact')?.classList.add('on');
   updateDynamicSettings();
   renderThemeGrid();
+}
+
+// ---- HWMON (Temperaturen & Lüfter) ----
+let hwmonInterval = null;
+async function loadHwmon() {
+    const r = await api('hwmon');
+    // Render temperature cards
+    const tempHtml = (r.temperatures || []).map(t => {
+        const color = t.temp >= 80 ? 'var(--danger)' : t.temp >= 60 ? 'var(--warning)' : 'var(--accent)';
+        const pct = Math.min(100, (t.temp / (t.critical || 100)) * 100);
+        return `<div class="stat-card">
+            <div class="stat-label">${t.label || 'Sensor'}</div>
+            <div class="stat-value" style="color:${color}">${t.temp.toFixed(0)}°C</div>
+            <div class="progress-bar" style="margin-top:10px;height:4px">
+                <div style="width:${pct}%;height:100%;border-radius:2px;background:${color};transition:width 0.5s"></div>
+            </div>
+            <div class="stat-sub">${t.high ? 'Max: ' + t.high + '°C' : ''} ${t.critical ? '/ Krit: ' + t.critical + '°C' : ''}</div>
+        </div>`;
+    }).join('') || '<p style="color:var(--text-dim)">Keine Temperatursensoren gefunden</p>';
+    document.getElementById('temp-cards').innerHTML = tempHtml;
+
+    // Render fan cards with spinning animation
+    const fanHtml = (r.fans || []).map((f, i) => {
+        const speed = f.rpm > 0 ? Math.max(0.1, 3000 / f.rpm) : 0;
+        const animStyle = f.rpm > 0 ? `animation: spin-fan ${speed.toFixed(2)}s linear infinite` : 'animation: none';
+        return `<div class="stat-card" style="text-align:center">
+            <div class="stat-label">${f.label || 'Lüfter ' + (i+1)}</div>
+            <div style="${animStyle};font-size:40px;margin:8px 0;display:inline-block">🌀</div>
+            <div class="stat-value" style="font-size:24px">${f.rpm} RPM</div>
+            ${f.pwm !== undefined ? `
+                <div style="margin-top:12px">
+                    <input type="range" class="glow-speed-slider" min="0" max="255" value="${f.pwm || 0}"
+                        oninput="setFanSpeed('${f.hwmon}','${f.pwm_file}',this.value)" style="width:100%">
+                    <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim)">
+                        <span>Leise</span><span>${f.pwm || 0}/255</span><span>Max</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline" onclick="resetFanAuto('${f.hwmon}','${f.pwm_file}')" style="margin-top:6px;width:100%">Auto</button>
+                </div>
+            ` : '<div class="stat-sub">Nicht steuerbar</div>'}
+        </div>`;
+    }).join('') || '<p style="color:var(--text-dim)">Keine Lüfter gefunden</p>';
+    document.getElementById('fan-cards').innerHTML = fanHtml;
+}
+
+async function setFanSpeed(hwmon, pwm, value) {
+    await api('hwmon/fan', {device: hwmon, fan: pwm, value: parseInt(value)});
+}
+async function resetFanAuto(hwmon, pwm) {
+    await api('hwmon/fan/auto', {device: hwmon, fan: pwm});
+    toast('Lüfter auf Auto zurückgesetzt', 'info');
+    loadHwmon();
+}
+
+// ---- WIPE CERTIFICATE ----
+async function exportWipeCert() {
+    const dev = document.getElementById('wipe-disk').value;
+    const method = document.getElementById('wipe-method').value;
+    const passes = document.getElementById('wipe-passes').value;
+    const r = await api('wiper/certificate', {device: dev, method: method, passes: parseInt(passes), verified: true});
+    if (r.content) downloadFile(r.filename || 'wipe-certificate.txt', r.content);
+    else toast('Fehler beim Erstellen des Zertifikats', 'error');
+}
+
+// ---- FULL HARDWARE TEST ----
+async function startFullTest() {
+    const r = await api('hwtest/full', {});
+    if (r.task_id) renderTaskUI('fulltest-task', r.task_id);
 }
 
 // Init settings

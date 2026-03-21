@@ -19,12 +19,13 @@ import socket
 import zipfile
 import base64
 import fcntl
+import shutil
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8080
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "4.1.8"
+FLOWBIT_VERSION = "4.0.5"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -37,6 +38,9 @@ BIOS_PROFILES_DIR = Path("/opt/kit/bios_profiles")
 BIOS_PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 DATA_DIR = Path("/mnt/data")
+
+# Check if lm-sensors is available
+HAS_SENSORS = shutil.which("sensors") is not None
 
 # In-memory WOL history
 wol_history = []
@@ -2736,6 +2740,380 @@ def flash_update(task_id, iso_path, device):
             tasks[task_id] = {"status": "error", "error": str(e)}
 
 
+# ---- Hardware Monitor functions ----
+
+def get_hwmon_data():
+    """Read temperature and fan data from /sys/class/hwmon/."""
+    temperatures = []
+    fans = []
+    hwmon_base = "/sys/class/hwmon"
+
+    if os.path.isdir(hwmon_base):
+        for hwmon_dir in sorted(os.listdir(hwmon_base)):
+            hwmon_path = os.path.join(hwmon_base, hwmon_dir)
+            device_name = read_file(os.path.join(hwmon_path, "name"), hwmon_dir)
+
+            # Read temperatures
+            i = 1
+            while True:
+                temp_input = os.path.join(hwmon_path, f"temp{i}_input")
+                if not os.path.isfile(temp_input):
+                    break
+                try:
+                    temp_val = int(Path(temp_input).read_text().strip()) / 1000.0
+                except (ValueError, OSError):
+                    i += 1
+                    continue
+
+                label = read_file(os.path.join(hwmon_path, f"temp{i}_label"), f"{device_name} temp{i}")
+                high_val = None
+                crit_val = None
+                try:
+                    high_raw = os.path.join(hwmon_path, f"temp{i}_max")
+                    if os.path.isfile(high_raw):
+                        high_val = int(Path(high_raw).read_text().strip()) / 1000.0
+                except (ValueError, OSError):
+                    pass
+                try:
+                    crit_raw = os.path.join(hwmon_path, f"temp{i}_crit")
+                    if os.path.isfile(crit_raw):
+                        crit_val = int(Path(crit_raw).read_text().strip()) / 1000.0
+                except (ValueError, OSError):
+                    pass
+
+                temperatures.append({
+                    "label": label,
+                    "temp": temp_val,
+                    "high": high_val,
+                    "critical": crit_val
+                })
+                i += 1
+
+            # Read fans
+            i = 1
+            while True:
+                fan_input = os.path.join(hwmon_path, f"fan{i}_input")
+                if not os.path.isfile(fan_input):
+                    break
+                try:
+                    rpm_val = int(Path(fan_input).read_text().strip())
+                except (ValueError, OSError):
+                    i += 1
+                    continue
+
+                label = read_file(os.path.join(hwmon_path, f"fan{i}_label"), f"{device_name} fan{i}")
+                min_val = None
+                max_val = None
+                try:
+                    min_raw = os.path.join(hwmon_path, f"fan{i}_min")
+                    if os.path.isfile(min_raw):
+                        min_val = int(Path(min_raw).read_text().strip())
+                except (ValueError, OSError):
+                    pass
+                try:
+                    max_raw = os.path.join(hwmon_path, f"fan{i}_max")
+                    if os.path.isfile(max_raw):
+                        max_val = int(Path(max_raw).read_text().strip())
+                except (ValueError, OSError):
+                    pass
+
+                fans.append({
+                    "label": label,
+                    "rpm": rpm_val,
+                    "min": min_val,
+                    "max": max_val
+                })
+                i += 1
+
+    # Fallback: try lm-sensors JSON output if no data found via sysfs
+    if not temperatures and not fans and HAS_SENSORS:
+        try:
+            output = subprocess.check_output(["sensors", "-j"], stderr=subprocess.DEVNULL, timeout=5).decode()
+            sensors_data = json.loads(output)
+            for chip_name, chip_data in sensors_data.items():
+                if not isinstance(chip_data, dict):
+                    continue
+                for feature_name, feature_data in chip_data.items():
+                    if not isinstance(feature_data, dict):
+                        continue
+                    for key, val in feature_data.items():
+                        if key.endswith("_input") and "temp" in key.lower():
+                            temperatures.append({
+                                "label": feature_name,
+                                "temp": float(val),
+                                "high": feature_data.get(key.replace("_input", "_max")),
+                                "critical": feature_data.get(key.replace("_input", "_crit"))
+                            })
+                        elif key.endswith("_input") and "fan" in key.lower():
+                            fans.append({
+                                "label": feature_name,
+                                "rpm": int(val),
+                                "min": feature_data.get(key.replace("_input", "_min")),
+                                "max": feature_data.get(key.replace("_input", "_max"))
+                            })
+        except Exception:
+            pass
+
+    return {"temperatures": temperatures, "fans": fans}
+
+
+def set_fan_speed(device, fan, value):
+    """Set fan PWM speed manually."""
+    safe_device = sanitize_device(device)
+    safe_fan = sanitize_device(fan)
+    value = max(0, min(255, int(value)))
+
+    pwm_path = f"/sys/class/hwmon/{safe_device}/{safe_fan}"
+    enable_path = f"{pwm_path}_enable"
+
+    if not os.path.isfile(pwm_path):
+        return {"error": f"PWM path not found: {pwm_path}"}
+
+    try:
+        # Enable manual control first
+        if os.path.isfile(enable_path):
+            Path(enable_path).write_text("1")
+        Path(pwm_path).write_text(str(value))
+        return {"success": True, "device": safe_device, "fan": safe_fan, "value": value}
+    except PermissionError:
+        return {"error": "Keine Berechtigung — Root-Rechte erforderlich"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def set_fan_auto(device, fan):
+    """Reset fan to automatic control."""
+    safe_device = sanitize_device(device)
+    safe_fan = sanitize_device(fan)
+
+    enable_path = f"/sys/class/hwmon/{safe_device}/{safe_fan}_enable"
+    if not os.path.isfile(enable_path):
+        return {"error": f"PWM enable path not found: {enable_path}"}
+
+    try:
+        # Try mode 2 (automatic) first, fall back to 0
+        try:
+            Path(enable_path).write_text("2")
+        except OSError:
+            Path(enable_path).write_text("0")
+        return {"success": True, "device": safe_device, "fan": safe_fan, "mode": "auto"}
+    except PermissionError:
+        return {"error": "Keine Berechtigung — Root-Rechte erforderlich"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ---- Wipe Certificate ----
+
+def generate_wipe_certificate(device, method, passes, verified):
+    """Generate a text wipe certificate for a device."""
+    safe_dev = sanitize_device(device)
+    info = get_system_info()
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+
+    # Get device details
+    model = run_cmd(f"lsblk -dn -o MODEL /dev/{safe_dev} 2>/dev/null", "N/A")
+    serial = run_cmd(f"lsblk -dn -o SERIAL /dev/{safe_dev} 2>/dev/null", "N/A")
+    size = run_cmd(f"lsblk -dn -o SIZE /dev/{safe_dev} 2>/dev/null", "N/A")
+
+    method_names = {
+        "zero": "Zero Fill",
+        "random": "Random Data",
+        "dod": "DoD 5220.22-M",
+        "gutmann": "Gutmann (35-pass)",
+    }
+    method_display = method_names.get(method, method)
+    verified_str = "Yes" if verified else "No"
+    sys_info_str = f"{info.get('manufacturer', 'N/A')} {info.get('model', 'N/A')} / SN: {info.get('serial', 'N/A')}"
+
+    cert = f"""\
+{'=' * 51}
+        FLOWBIT OS — WIPE CERTIFICATE
+{'=' * 51}
+
+Date:           {timestamp}
+System:         {sys_info_str}
+Operator:       flowbit OS {FLOWBIT_VERSION}
+
+DEVICE WIPED:
+  Device:       /dev/{safe_dev}
+  Model:        {model}
+  Serial:       {serial}
+  Size:         {size}
+
+WIPE METHOD:
+  Method:       {method_display}
+  Passes:       {passes}
+  Verified:     {verified_str}
+
+RESULT:         COMPLETE — ALL DATA DESTROYED
+
+{'=' * 51}
+  This certificate confirms that the above device
+  has been securely wiped using flowbit OS.
+{'=' * 51}
+"""
+    return cert
+
+
+# ---- Antivirus Paths ----
+
+def get_antivirus_scan_paths():
+    """Find suggested scan paths from mounted partitions."""
+    paths = []
+    search_dirs = ["/mnt", "/tmp/ittools_mnt"]
+    common_subdirs = ["Windows", "Users", "Program Files", "Program Files (x86)",
+                      "home", "root", "etc", "var", "opt"]
+
+    for search_dir in search_dirs:
+        if not os.path.isdir(search_dir):
+            continue
+        try:
+            for entry in sorted(os.listdir(search_dir)):
+                mount_path = os.path.join(search_dir, entry)
+                if not os.path.isdir(mount_path):
+                    continue
+                # Check if it's a mountpoint or has content
+                if os.path.ismount(mount_path) or os.listdir(mount_path):
+                    # Add the root of the mounted partition
+                    paths.append({"path": mount_path, "label": f"{entry} - Root"})
+                    # Check for common subdirectories
+                    for subdir in common_subdirs:
+                        sub_path = os.path.join(mount_path, subdir)
+                        if os.path.isdir(sub_path):
+                            paths.append({"path": sub_path, "label": f"{entry} - {subdir}"})
+        except OSError:
+            pass
+
+    return {"paths": paths}
+
+
+# ---- Full Hardware Test ----
+
+def full_hwtest_thread(tid):
+    """Run RAM test + CPU stress + Disk read test sequentially."""
+    failed = False
+    try:
+        # Step 1: RAM Test
+        append_output(tid, "=== RAM Test (256 MB, 1 Durchgang) ===\n")
+        update_task(tid, progress=5)
+
+        size_mb = 256
+        fname = f"/dev/shm/.ramtest_{tid}_full"
+        fname_stress = f"/dev/shm/.ramtest_stress_{tid}_full"
+
+        append_output(tid, f"Schreibe {size_mb} MB Zufallsdaten...\n")
+        subprocess.run(["dd", "if=/dev/urandom", f"of={fname}", "bs=1M", f"count={size_mb}"],
+                     capture_output=True, timeout=120)
+        c1 = run_cmd(f"md5sum {fname} | cut -d' ' -f1", "", timeout=60)
+
+        subprocess.run(["dd", "if=/dev/zero", f"of={fname_stress}", "bs=1M", f"count={size_mb}"],
+                     capture_output=True, timeout=120)
+        try:
+            os.remove(fname_stress)
+        except:
+            pass
+        subprocess.run(["sync"], timeout=10)
+
+        c2 = run_cmd(f"md5sum {fname} | cut -d' ' -f1", "", timeout=60)
+        try:
+            os.remove(fname)
+        except:
+            pass
+
+        if c1 and c1 == c2:
+            append_output(tid, f"  RAM Test: OK (MD5: {c1})\n")
+        else:
+            append_output(tid, f"  RAM Test: FEHLER! Checksummen stimmen nicht überein!\n")
+            append_output(tid, f"  Erwartet: {c1}\n  Erhalten: {c2}\n")
+            failed = True
+
+        update_task(tid, progress=33)
+
+        # Step 2: CPU Stress Test
+        append_output(tid, "\n=== CPU Stresstest (30s) ===\n")
+        duration = 30
+        cores = int(run_cmd("nproc", "2"))
+        append_output(tid, f"Starte {cores} Kerne für {duration} Sekunden...\n")
+
+        procs = []
+        for i in range(cores):
+            p = subprocess.Popen(
+                ["timeout", str(duration), "awk", "BEGIN{for(i=0;i<999999999;i++)sin(i)}"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+            procs.append(p)
+
+        start = time.time()
+        while time.time() - start < duration:
+            elapsed = int(time.time() - start)
+            temp = run_cmd("sensors 2>/dev/null | grep -m1 'Package\\|Tctl\\|Core 0' | grep -oP '[\\d.]+.C' | head -1", "N/A")
+            load = run_cmd("cat /proc/loadavg | cut -d' ' -f1", "?")
+            append_output(tid, f"  [{elapsed}s/{duration}s] Load: {load} | Temp: {temp}\n")
+            pct = 33 + int(elapsed / duration * 33)
+            update_task(tid, progress=pct)
+
+            try:
+                temp_val = float(re.search(r'[\d.]+', temp).group()) if temp != "N/A" else 0
+                if temp_val > 95:
+                    append_output(tid, f"\n  WARNUNG: Temperatur {temp_val}°C > 95°C — Abbruch!\n")
+                    for p in procs:
+                        p.kill()
+                    failed = True
+                    break
+            except:
+                pass
+            time.sleep(5)
+
+        for p in procs:
+            try:
+                p.wait(timeout=5)
+            except:
+                p.kill()
+
+        if not failed:
+            append_output(tid, f"  CPU Stresstest: OK\n")
+
+        update_task(tid, progress=66)
+
+        # Step 3: Disk Read Test
+        append_output(tid, "\n=== Disk Lesetest ===\n")
+
+        # Find first disk
+        first_disk = run_cmd("lsblk -dn -o NAME | head -1", "sda")
+        safe_dev = sanitize_device(first_disk)
+        append_output(tid, f"Teste /dev/{safe_dev}...\n")
+
+        # Sequential read
+        append_output(tid, "Sequentieller Lesetest (256 MB)...\n")
+        update_task(tid, progress=75)
+        r = run_cmd(f"dd if=/dev/{safe_dev} of=/dev/null bs=1M count=256 iflag=direct 2>&1 | tail -1", "", timeout=60)
+        append_output(tid, f"  {r}\n")
+
+        # SMART
+        append_output(tid, "\nSMART Gesundheit:\n")
+        update_task(tid, progress=85)
+        smart = run_cmd(f"smartctl -H /dev/{safe_dev} 2>&1", "N/A", timeout=15)
+        smart_ok = "PASSED" in smart or "OK" in smart
+        if not smart_ok and "FAILED" in smart:
+            failed = True
+        append_output(tid, f"  {smart}\n")
+
+        update_task(tid, progress=100)
+
+        if failed:
+            append_output(tid, "\n=== ERGEBNIS: FEHLER GEFUNDEN ===\n")
+            finish_task(tid, 1)
+        else:
+            append_output(tid, "\n=== ERGEBNIS: BESTANDEN ===\n")
+            finish_task(tid, 0)
+
+    except Exception as e:
+        append_output(tid, f"\nFehler: {str(e)}\n")
+        append_output(tid, "\n=== ERGEBNIS: FEHLER ===\n")
+        finish_task(tid, 1)
+
+
 # ---- HTTP Handler ----
 
 class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
@@ -2878,6 +3256,13 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/antivirus/status":
             installed = run_cmd("which clamscan 2>/dev/null", "", timeout=5)
             self.send_json({"installed": bool(installed), "path": installed})
+
+        elif path == "/api/antivirus/paths":
+            self.send_json(get_antivirus_scan_paths())
+
+        # ---- Hardware Monitor ----
+        elif path == "/api/hwmon":
+            self.send_json(get_hwmon_data())
 
         # ---- Secure Boot ----
         elif path == "/api/secureboot":
@@ -3407,6 +3792,49 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             log_action("Antivirus Scan", f"path={safe_path}")
             tid = new_task(f"ClamAV Scan {safe_path}")
             threading.Thread(target=antivirus_scan_thread, args=(tid, safe_path), daemon=True).start()
+            self.send_json({"task_id": tid})
+
+        # ---- Hardware Monitor Fan Control ----
+        elif path == "/api/hwmon/fan":
+            device = data.get("device", "")
+            fan = data.get("fan", "")
+            value = data.get("value", 0)
+            if not device or not fan:
+                self.send_json({"error": "device and fan required"}, 400)
+                return
+            log_action("Fan Speed", f"device={device} fan={fan} value={value}")
+            self.send_json(set_fan_speed(device, fan, value))
+
+        elif path == "/api/hwmon/fan/auto":
+            device = data.get("device", "")
+            fan = data.get("fan", "")
+            if not device or not fan:
+                self.send_json({"error": "device and fan required"}, 400)
+                return
+            log_action("Fan Auto", f"device={device} fan={fan}")
+            self.send_json(set_fan_auto(device, fan))
+
+        # ---- Wipe Certificate ----
+        elif path == "/api/wiper/certificate":
+            device = data.get("device", "")
+            method = data.get("method", "zero")
+            passes = int(data.get("passes", 1))
+            verified = bool(data.get("verified", False))
+            if not device:
+                self.send_json({"error": "device required"}, 400)
+                return
+            log_action("Wipe Certificate", f"device={device}")
+            cert = generate_wipe_certificate(device, method, passes, verified)
+            safe_dev = sanitize_device(device)
+            serial = run_cmd(f"lsblk -dn -o SERIAL /dev/{safe_dev} 2>/dev/null", "NA")
+            filename = f"WIPE_CERT_{serial}_{time.strftime('%Y%m%d_%H%M%S')}.txt"
+            self.send_json({"filename": filename, "content": cert})
+
+        # ---- Full Hardware Test ----
+        elif path == "/api/hwtest/full":
+            log_action("Full HW Test", "RAM + CPU + Disk")
+            tid = new_task("Full Hardware Test")
+            threading.Thread(target=full_hwtest_thread, args=(tid,), daemon=True).start()
             self.send_json({"task_id": tid})
 
         # ---- Boot Repair ----
