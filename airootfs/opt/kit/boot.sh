@@ -144,24 +144,38 @@ clear
 echo ""
 echo -e "${TEAL}    flowbit OS${RESET} ${DIM}v${CURRENT_VER}${RESET}"
 echo ""
+echo -ne "${DIM}    Netzwerk: "
 
-# Ensure NetworkManager is running
-if command -v nmcli &>/dev/null; then
-    systemctl start NetworkManager 2>/dev/null
+# Try 1: Check if we already have an IP
+IP=$(get_ip)
+
+# Try 2: Start dhcpcd on all interfaces
+if [ -z "$IP" ]; then
+    dhcpcd --nobackground -t 5 2>/dev/null &
+    for i in $(seq 1 10); do
+        IP=$(get_ip)
+        [ -n "$IP" ] && break
+        echo -n "."
+        sleep 1
+    done
 fi
 
-# Wait for IP (max 8s, break early)
-echo -ne "${DIM}    Netzwerk: "
-for i in $(seq 1 8); do
-    IP=$(get_ip)
-    if [ -n "$IP" ]; then
-        echo -e "${TEAL}${IP}${RESET}"
-        break
-    fi
-    echo -n "."
-    sleep 1
-done
-[ -z "$IP" ] && echo -e "${YELLOW}kein Netzwerk${RESET}"
+# Try 3: Start NetworkManager as fallback
+if [ -z "$IP" ] && command -v nmcli &>/dev/null; then
+    systemctl start NetworkManager 2>/dev/null
+    for i in $(seq 1 5); do
+        IP=$(get_ip)
+        [ -n "$IP" ] && break
+        echo -n "."
+        sleep 1
+    done
+fi
+
+if [ -n "$IP" ]; then
+    echo -e "${TEAL}${IP}${RESET}"
+else
+    echo -e "${YELLOW}offline${RESET}"
+fi
 sleep 1
 
 # ========== MAIN MENU ==========
