@@ -307,12 +307,13 @@ body.light .toast { color: #1a1d26; }
   display: flex; flex-direction: column; gap: 8px;
 }
 .toast {
-  padding: 12px 20px; border-radius: var(--radius-sm);
-  font-size: 13px; color: white; min-width: 280px; max-width: 400px;
+  padding: 14px 20px; border-radius: var(--radius-sm);
+  font-size: 13px; color: white; min-width: 300px; max-width: 420px;
   animation: slideIn 0.3s ease;
   box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 10px;
+  cursor: pointer;
 }
 .toast-success { background: rgba(34,197,94,0.85); }
 .toast-error { background: rgba(239,68,68,0.85); }
@@ -2120,7 +2121,9 @@ function toast(msg, type='info', duration=4000) {
   const container = document.getElementById('toast-container');
   const el = document.createElement('div');
   el.className = 'toast toast-' + type;
-  el.textContent = msg;
+  const icons = { success: '✓', error: '✕', warning: '⚠', info: 'ℹ' };
+  el.innerHTML = `<span style="font-size:16px">${icons[type] || 'ℹ'}</span> ${msg}`;
+  el.onclick = () => { el.style.opacity = '0'; setTimeout(() => el.remove(), 200); };
   container.appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, duration);
 }
