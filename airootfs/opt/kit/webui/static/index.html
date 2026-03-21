@@ -85,7 +85,7 @@ body::before {
   padding: 16px 24px; background: var(--bg-card); backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border); border-radius: var(--radius);
-  position: relative;
+  position: relative; z-index: 100;
   border-top: 2px solid var(--accent);
   border-image: linear-gradient(90deg, var(--accent), #3b82f6, #8b5cf6) 1;
   border-image-slice: 1 0 0 0;
@@ -114,6 +114,7 @@ body::before {
   padding: 4px; background: var(--bg-card); border: 1px solid var(--border);
   border-radius: var(--radius) var(--radius) 0 0; backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  position: relative; z-index: 10;
 }
 .nav-main.no-sub {
   border-radius: var(--radius); margin-bottom: 28px;
