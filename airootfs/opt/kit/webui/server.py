@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, urlparse
 
 PORT = 8080
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "4.0.10"
+FLOWBIT_VERSION = "4.1.0"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
