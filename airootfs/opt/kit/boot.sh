@@ -21,7 +21,7 @@ ISO_SHA=""
 NOTES=""
 
 get_ip() {
-    hostname -I 2>/dev/null | awk '{print $1}'
+    ip -4 route get 1.1.1.1 2>/dev/null | grep -o 'src [0-9.]*' | awk '{print $2}'
 }
 
 check_update() {
@@ -146,37 +146,30 @@ echo -e "${TEAL}    flowbit OS${RESET} ${DIM}v${CURRENT_VER}${RESET}"
 echo ""
 echo -ne "${DIM}    Netzwerk: "
 
-# Try 1: Check if we already have an IP
-IP=$(get_ip)
+# Bring all interfaces up
+for iface in $(ls /sys/class/net/ 2>/dev/null | grep -v lo); do
+    ip link set "$iface" up 2>/dev/null
+done
 
-# Try 2: Start dhcpcd on all interfaces
-if [ -z "$IP" ]; then
-    dhcpcd --nobackground -t 5 2>/dev/null &
-    for i in $(seq 1 10); do
-        IP=$(get_ip)
-        [ -n "$IP" ] && break
-        echo -n "."
-        sleep 1
-    done
-fi
+# Start everything
+systemctl start NetworkManager 2>/dev/null
+systemctl start systemd-networkd 2>/dev/null
+dhcpcd 2>/dev/null &
+DHCP_PID=$!
 
-# Try 3: Start NetworkManager as fallback
-if [ -z "$IP" ] && command -v nmcli &>/dev/null; then
-    systemctl start NetworkManager 2>/dev/null
-    for i in $(seq 1 5); do
-        IP=$(get_ip)
-        [ -n "$IP" ] && break
-        echo -n "."
-        sleep 1
-    done
-fi
+# Wait for IP
+for i in $(seq 1 12); do
+    IP=$(get_ip)
+    [ -n "$IP" ] && break
+    echo -n "."
+    sleep 1
+done
 
 if [ -n "$IP" ]; then
     echo -e "${TEAL}${IP}${RESET}"
 else
     echo -e "${YELLOW}offline${RESET}"
 fi
-sleep 1
 
 # ========== MAIN MENU ==========
 while true; do
