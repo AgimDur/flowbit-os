@@ -11,7 +11,10 @@ BOLD="\033[1m"
 RESET="\033[0m"
 TEAL="\033[38;5;43m"
 
-CURRENT_VER=$(cat /etc/flowbit-release 2>/dev/null || echo "0.0.0")
+CURRENT_VER=$(cat /etc/flowbit-release 2>/dev/null)
+if [ -z "$CURRENT_VER" ]; then
+    CURRENT_VER="0.0.0"
+fi
 UPDATE_AVAILABLE=""
 LATEST_VER=""
 ISO_URL=""
@@ -217,7 +220,9 @@ while true; do
             sleep 1
             poweroff
             ;;
-        *)
+        ""|*)
+            echo -e "\n${YELLOW}    Ungültige Auswahl.${RESET}"
+            sleep 1
             ;;
     esac
 done

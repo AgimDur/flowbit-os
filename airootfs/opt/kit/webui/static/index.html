@@ -1215,7 +1215,8 @@ body.light .settings-panel { background: rgba(255,255,255,0.97); }
     <div class="card">
       <div class="card-title">Terminal</div>
       <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Shell-Befehle direkt in der Web-UI ausführen.</p>
-      <div class="terminal" id="term-output" style="min-height:400px;margin-top:10px">flowbit OS Terminal\n$ </div>
+      <div class="terminal" id="term-output" style="min-height:400px;margin-top:10px">flowbit OS Terminal
+$ </div>
       <div class="input-group" style="margin-top:8px">
         <span style="color:var(--accent);padding:8px;font-family:monospace;font-weight:700">$</span>
         <input type="text" id="term-input" placeholder="Befehl eingeben..." style="font-family:monospace" onkeydown="if(event.key==='Enter')execTerminal()">
@@ -1304,7 +1305,7 @@ function toggleLang() {
 // Clock
 setInterval(() => {
   const el = document.getElementById('h-time');
-  if (el) el.textContent = new Date().toLocaleString('de-CH');
+  if (el) el.textContent = new Date().toLocaleString(currentLang === 'de' ? 'de-CH' : 'en-US');
 }, 1000);
 
 // Navigation categories
