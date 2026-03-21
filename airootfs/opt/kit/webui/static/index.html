@@ -85,11 +85,10 @@ body::before {
   padding: 16px 24px; background: var(--bg-card); backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: hidden; position: relative;
-}
-.header::before {
-  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
-  background: linear-gradient(90deg, var(--accent), #3b82f6, #8b5cf6);
+  position: relative;
+  border-top: 2px solid var(--accent);
+  border-image: linear-gradient(90deg, var(--accent), #3b82f6, #8b5cf6) 1;
+  border-image-slice: 1 0 0 0;
 }
 .header h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; font-family: var(--font-display); }
 .header h1 span { color: var(--accent); }
