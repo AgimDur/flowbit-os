@@ -2606,7 +2606,7 @@ async function scanWifi() {
   if (!r.networks || !r.networks.length) { tbody.innerHTML = '<tr><td colspan="4">Keine Netzwerke gefunden</td></tr>'; return; }
   tbody.innerHTML = r.networks.map(n => {
     const bars = n.signal > 70 ? '▓▓▓▓' : n.signal > 50 ? '▓▓▓░' : n.signal > 30 ? '▓▓░░' : '▓░░░';
-    return `<tr><td><strong>${n.ssid}</strong></td><td>${bars} ${n.signal}%</td><td><span class="badge badge-info">${n.security||'Open'}</span></td>
+    return `<tr><td><strong>${escapeHtml(n.ssid)}</strong></td><td>${bars} ${n.signal}%</td><td><span class="badge badge-info">${escapeHtml(n.security||'Open')}</span></td>
       <td><button class="btn btn-sm btn-outline" onclick="document.getElementById('wifi-ssid').value='${escapeAttr(n.ssid)}'">${escapeHtml('Verbinden')}</button></td></tr>`;
   }).join('');
 }
@@ -2616,8 +2616,8 @@ async function connectWifi() {
   document.getElementById('wifi-result').innerHTML = '<div class="spinner"></div> Verbinde...';
   const r = await api('wifi/connect', {ssid, password: pass});
   document.getElementById('wifi-result').innerHTML = r.success ?
-    '<span style="color:var(--success)">Verbunden mit ' + ssid + '</span>' :
-    '<span style="color:var(--danger)">' + (r.error||'Verbindung fehlgeschlagen') + '</span>';
+    '<span style="color:var(--success)">Verbunden mit ' + escapeHtml(ssid) + '</span>' :
+    '<span style="color:var(--danger)">' + escapeHtml(r.error||'Verbindung fehlgeschlagen') + '</span>';
   loadWifiStatus();
 }
 async function loadWifiStatus() {
@@ -2632,7 +2632,7 @@ async function loadWifiStatus() {
   const saved = await api('wifi/saved');
   document.getElementById('wifi-saved').innerHTML = (saved.networks||[]).map(n =>
     `<div style="padding:4px 0;display:flex;justify-content:space-between;border-bottom:1px solid var(--border)">
-      <span>${n.name}</span>
+      <span>${escapeHtml(n.name)}</span>
       <button class="btn btn-sm btn-outline" onclick="api('wifi/disconnect',{name:'${escapeAttr(n.name)}'}).then(()=>loadWifiStatus())">Trennen</button>
     </div>`
   ).join('') || 'Keine gespeicherten Netzwerke';
@@ -2903,7 +2903,7 @@ async function connectVNC() {
     const host = document.getElementById('vnc-host').value;
     const port = document.getElementById('vnc-port').value;
     const pass = document.getElementById('vnc-pass').value;
-    if (!host) { showToast('Bitte Host angeben', 'error'); return; }
+    if (!host) { toast('Bitte Host angeben', 'error'); return; }
     document.getElementById('vnc-status').textContent = 'Verbinde...';
     const r = await api('vnc/connect', {host, port: parseInt(port), password: pass});
     if (r.success) {
@@ -2927,27 +2927,31 @@ async function disconnectVNC() {
 }
 
 // ---- AD / LDAP BROWSER ----
+let ldapCreds = {};
 async function ldapConnect() {
     const server = document.getElementById('ldap-server').value;
     const basedn = document.getElementById('ldap-basedn').value;
     const user = document.getElementById('ldap-user').value;
     const pass = document.getElementById('ldap-pass').value;
-    if (!server || !basedn) { showToast('Server und Base DN angeben', 'error'); return; }
+    if (!server || !basedn) { toast('Server und Base DN angeben', 'error'); return; }
+    ldapCreds = { server: server, base_dn: basedn, user: user, password: pass };
     document.getElementById('ldap-status').innerHTML = '<div class="spinner" style="display:inline-block;width:14px;height:14px"></div> Verbinde...';
-    const r = await api('ldap/connect', {server, base_dn: basedn, user, password: pass});
-    if (r.success) {
+    const r = await api('ldap/search', {...ldapCreds, filter: '(objectClass=*)', limit: 1});
+    if (!r.error) {
         document.getElementById('ldap-status').innerHTML = '<span style="color:var(--accent)">&#10003; Verbunden mit ' + escapeHtml(server) + '</span>';
         document.getElementById('ldap-search-panel').style.display = 'block';
         addNotification('LDAP verbunden mit ' + escapeHtml(server), 'success');
     } else {
         document.getElementById('ldap-status').innerHTML = '<span style="color:#ff6b6b">&#10007; ' + escapeHtml(r.error || 'Verbindung fehlgeschlagen') + '</span>';
+        ldapCreds = {};
     }
 }
 
 async function ldapQuery(type) {
+    if (!ldapCreds.server) { toast('Bitte zuerst verbinden', 'error'); return; }
     const el = document.getElementById('ldap-results');
     el.innerHTML = '<div class="spinner"></div> Suche ' + escapeHtml(type) + '...';
-    const r = await api('ldap/query', {type: type});
+    const r = await api('ldap/' + type, {...ldapCreds});
     if (r.error) { el.innerHTML = '<span style="color:#ff6b6b">' + escapeHtml(r.error) + '</span>'; return; }
     if (!r.results || !r.results.length) { el.innerHTML = '<span style="color:var(--text-dim)">Keine Ergebnisse</span>'; return; }
     let html = '<table><thead><tr>';
@@ -2964,11 +2968,12 @@ async function ldapQuery(type) {
 }
 
 async function ldapCustomSearch() {
+    if (!ldapCreds.server) { toast('Bitte zuerst verbinden', 'error'); return; }
     const filter = document.getElementById('ldap-filter').value;
-    if (!filter) { showToast('LDAP Filter eingeben', 'error'); return; }
+    if (!filter) { toast('LDAP Filter eingeben', 'error'); return; }
     const el = document.getElementById('ldap-results');
     el.innerHTML = '<div class="spinner"></div> Suche...';
-    const r = await api('ldap/query', {filter: filter});
+    const r = await api('ldap/search', {...ldapCreds, filter: filter});
     if (r.error) { el.innerHTML = '<span style="color:#ff6b6b">' + escapeHtml(r.error) + '</span>'; return; }
     if (!r.results || !r.results.length) { el.innerHTML = '<span style="color:var(--text-dim)">Keine Ergebnisse</span>'; return; }
     let html = '<table><thead><tr>';
@@ -2987,15 +2992,15 @@ async function ldapCustomSearch() {
 // ---- VPN (WireGuard) ----
 async function vpnConnect() {
     const config = document.getElementById('vpn-config').value;
-    if (!config.includes('[Interface]')) { showToast('Ungueltige WireGuard Config', 'error'); return; }
+    if (!config.includes('[Interface]')) { toast('Ungueltige WireGuard Config', 'error'); return; }
     const configB64 = btoa(config);
     const r = await api('vpn/connect', {config: configB64});
     if (r.success) {
-        showToast('VPN verbunden', 'success');
+        toast('VPN verbunden', 'success');
         document.getElementById('vpn-disconnect-btn').style.display = 'inline-flex';
         loadVPNStatus();
     } else {
-        showToast('VPN Fehler: ' + (r.output || r.error), 'error');
+        toast('VPN Fehler: ' + (r.output || r.error), 'error');
     }
 }
 
@@ -3010,7 +3015,7 @@ function loadVPNConfig(input) {
 async function vpnDisconnect() {
     await api('vpn/disconnect');
     document.getElementById('vpn-disconnect-btn').style.display = 'none';
-    showToast('VPN getrennt', 'info');
+    toast('VPN getrennt', 'info');
     loadVPNStatus();
 }
 
@@ -3036,10 +3041,10 @@ async function doDNSLookup() {
     const domain = document.getElementById('dns-domain').value;
     const type = document.getElementById('dns-type').value;
     const server = document.getElementById('dns-server').value;
-    if (!domain) { showToast('Domain eingeben', 'error'); return; }
+    if (!domain) { toast('Domain eingeben', 'error'); return; }
     const el = document.getElementById('dns-results');
     el.innerHTML = '<div class="spinner"></div> Abfrage...';
-    const r = await api('dns/lookup', {domain: domain, type: type, server: server || undefined});
+    const r = await api('dns/dig', {domain: domain, type: type, server: server || undefined});
     if (r.error) { el.innerHTML = '<div class="terminal" style="min-height:60px"><span style="color:#ff6b6b">' + escapeHtml(r.error) + '</span></div>'; return; }
     let html = '<div class="terminal" style="min-height:60px">';
     if (r.command) html += '<div style="color:var(--accent);margin-bottom:8px">$ ' + escapeHtml(r.command) + '</div>';
@@ -3064,15 +3069,15 @@ async function startHotspot() {
     const ssid = document.getElementById('hotspot-ssid').value;
     const pass = document.getElementById('hotspot-pass').value;
     const band = document.getElementById('hotspot-band').value;
-    if (!ssid) { showToast('SSID eingeben', 'error'); return; }
-    if (pass && pass.length < 8) { showToast('Passwort muss mindestens 8 Zeichen haben', 'error'); return; }
+    if (!ssid) { toast('SSID eingeben', 'error'); return; }
+    if (pass && pass.length < 8) { toast('Passwort muss mindestens 8 Zeichen haben', 'error'); return; }
     const r = await api('hotspot/start', {ssid: ssid, password: pass, band: band});
     if (r.success) {
-        showToast('Hotspot gestartet: ' + escapeHtml(ssid), 'success');
+        toast('Hotspot gestartet: ' + escapeHtml(ssid), 'success');
         document.getElementById('hotspot-stop-btn').style.display = 'inline-flex';
         loadHotspotStatus();
     } else {
-        showToast('Hotspot Fehler: ' + (r.error || 'unbekannt'), 'error');
+        toast('Hotspot Fehler: ' + (r.error || 'unbekannt'), 'error');
     }
 }
 
@@ -3080,7 +3085,7 @@ async function stopHotspot() {
     await api('hotspot/stop');
     document.getElementById('hotspot-stop-btn').style.display = 'none';
     document.getElementById('hotspot-status').innerHTML = '<span style="color:var(--text-dim)">Hotspot gestoppt</span>';
-    showToast('Hotspot gestoppt', 'info');
+    toast('Hotspot gestoppt', 'info');
 }
 
 async function loadHotspotStatus() {
@@ -3089,8 +3094,8 @@ async function loadHotspotStatus() {
     if (r.active) {
         el.innerHTML = '<div style="padding:8px;background:rgba(0,212,170,0.1);border-radius:8px;border:1px solid var(--accent)">' +
             '<strong style="color:var(--accent)">&#10003; Hotspot aktiv</strong>' +
-            (r.ssid ? '<br><span style="font-size:12px;color:var(--text-dim)">SSID: ' + escapeHtml(r.ssid) + '</span>' : '') +
-            (r.clients !== undefined ? '<br><span style="font-size:12px;color:var(--text-dim)">Clients: ' + r.clients + '</span>' : '') +
+            (r.details && r.details.name ? '<br><span style="font-size:12px;color:var(--text-dim)">SSID: ' + escapeHtml(r.details.name) + '</span>' : '') +
+            (r.details && r.details.clients !== undefined ? '<br><span style="font-size:12px;color:var(--text-dim)">Clients: ' + r.details.clients + '</span>' : '') +
             '</div>';
         document.getElementById('hotspot-stop-btn').style.display = 'inline-flex';
     } else {
@@ -3480,7 +3485,7 @@ async function checkUpdate() {
   const result = document.getElementById('update-result');
   result.style.display = 'block';
   if (r.error) {
-    result.innerHTML = `<div class="card" style="border-color:var(--danger)"><strong>Fehler:</strong> ${r.error}</div>`;
+    result.innerHTML = `<div class="card" style="border-color:var(--danger)"><strong>Fehler:</strong> ${escapeHtml(r.error)}</div>`;
     return;
   }
   if (r.update_available) {
@@ -3488,8 +3493,8 @@ async function checkUpdate() {
     const sizeMB = r.iso_size ? (r.iso_size / 1024 / 1024).toFixed(0) + ' MB' : 'unbekannt';
     result.innerHTML = `
       <div class="card" style="border-left:3px solid var(--success);background:rgba(34,197,94,0.05)">
-        <h3 style="color:var(--success);margin-bottom:8px">Update verfügbar: v${r.latest_version}</h3>
-        <p style="font-size:13px;margin-bottom:6px">${r.release_notes || ''}</p>
+        <h3 style="color:var(--success);margin-bottom:8px">Update verfügbar: v${escapeHtml(r.latest_version)}</h3>
+        <p style="font-size:13px;margin-bottom:6px">${escapeHtml(r.release_notes || '')}</p>
         <p style="font-size:12px;color:var(--text-dim)">Grösse: ${sizeMB}</p>
         <button class="btn" style="margin-top:12px" onclick="startUpdateDownload()">Jetzt herunterladen</button>
       </div>`;
@@ -3600,7 +3605,7 @@ async function initUpdateCheck() {
     const banner = document.createElement('div');
     banner.id = 'update-banner';
     banner.style.cssText = 'background:linear-gradient(90deg,var(--accent-dim),rgba(6,182,212,0.1));border:1px solid var(--accent);border-radius:8px;padding:10px 16px;margin:12px 24px 0;display:flex;align-items:center;justify-content:space-between;cursor:pointer';
-    banner.innerHTML = `<span>🔄 <strong>flowbit OS v${r.latest_version}</strong> verfügbar!</span><button class="btn btn-sm" onclick="showPage('update');checkUpdate()">Update</button>`;
+    banner.innerHTML = `<span>🔄 <strong>flowbit OS v${escapeHtml(r.latest_version)}</strong> verfügbar!</span><button class="btn btn-sm" onclick="showPage('update');checkUpdate()">Update</button>`;
     const dashPage = document.getElementById('page-dashboard');
     if (dashPage) dashPage.prepend(banner);
   }
@@ -4047,7 +4052,8 @@ async function loadQrCode() {
   const r = await api('serverip');
   const ip = r.ip || window.location.hostname;
   const port = window.location.port || '8080';
-  const url = 'http://' + ip + ':' + port;
+  const protocol = window.location.protocol;
+  const url = protocol + '//' + ip + ':' + port;
   document.getElementById('qr-url').textContent = url;
   const qrEl = document.getElementById('qr-image');
   qrEl.innerHTML = '<img src="/api/qrcode?url=' + encodeURIComponent(url) + '" alt="QR Code" style="max-width:200px;border-radius:8px;background:white;padding:12px">';
@@ -4351,7 +4357,7 @@ async function testCable() {
   el.innerHTML = '<div class="spinner"></div> Teste Kabel...';
 
   // Get link info from ethtool-like endpoint
-  const r = await api('cable-test', {interface: iface, target: target || null});
+  const r = await api('nettest', {interface: iface, target: target || null});
   if (r && r.success !== false) {
     let html = '<div class="info-grid" style="margin-top:8px">';
     html += '<div class="info-label">Interface</div><div class="info-value">' + escapeHtml(iface) + '</div>';
@@ -4459,7 +4465,7 @@ async function startBenchmark() {
   activeTasks++;
   updateStatusBar();
 
-  const r = await api('disk-benchmark', {disk: disk});
+  const r = await api('benchmark', {disk: disk});
   activeTasks = Math.max(0, activeTasks - 1);
   updateStatusBar();
 
@@ -4501,7 +4507,7 @@ async function loadTPM() {
   const el = document.getElementById('tpm-info');
   if (!el) return;
   el.innerHTML = '<div class="spinner"></div> Lade TPM-Info...';
-  const r = await api('tpm-info');
+  const r = await api('tpm/status');
   if (r && r.success !== false) {
     let html = '<div class="info-grid">';
     html += '<div class="info-label">TPM vorhanden</div><div class="info-value"><span class="badge ' + (r.present ? 'badge-success' : 'badge-danger') + '">' + (r.present ? 'Ja' : 'Nein') + '</span></div>';
@@ -4517,7 +4523,7 @@ async function loadTPM() {
 }
 
 async function clearTPM() {
-  const r = await api('tpm-clear', {});
+  const r = await api('tpm/clear', {});
   if (r && r.success) {
     toast('TPM erfolgreich gelöscht', 'success');
     addNotification('TPM wurde gelöscht', 'warning', true);
@@ -4534,7 +4540,7 @@ async function checkWin11() {
   const el = document.getElementById('win11-results');
   if (!el) return;
   el.innerHTML = '<div class="spinner"></div> Prüfe Kompatibilität...';
-  const r = await api('win11-check');
+  const r = await api('win11check');
   if (r && r.success !== false && r.checks) {
     let allPass = true;
     let html = '<div style="margin-top:8px">';
@@ -4564,7 +4570,7 @@ async function loadUSB() {
   const el = document.getElementById('usb-tree');
   if (!el) return;
   el.innerHTML = '<div class="spinner"></div> Lade USB-Geräte...';
-  const r = await api('usb-devices');
+  const r = await api('usb/devices');
   if (r && r.devices && r.devices.length) {
     el.innerHTML = r.devices.map(d => {
       const icon = d.type === 'hub' ? '&#128268;' : d.type === 'storage' ? '&#128190;' : d.type === 'input' ? '&#9000;' : '&#128268;';

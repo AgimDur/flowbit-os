@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 PORT = 8080
 HTTP_PORT = 8081  # HTTP redirect port
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "6.2.0"
+FLOWBIT_VERSION = "6.2.1"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -71,6 +71,7 @@ SESSION_TIMEOUT = 3600  # 1 hour
 sessions_lock = threading.Lock()
 
 # SSE clients for real-time updates (C02)
+MAX_SSE_CLIENTS = 20
 sse_clients = {}
 sse_clients_lock = threading.Lock()
 
@@ -3343,7 +3344,7 @@ def full_hwtest_thread(tid):
 
 def create_self_signed_cert():
     """Generate self-signed cert if not exists."""
-    cert_dir = "/tmp/ittools/ssl"
+    cert_dir = os.path.join(PERSIST_BASE, "ssl")
     cert_file = os.path.join(cert_dir, "server.crt")
     key_file = os.path.join(cert_dir, "server.key")
     if os.path.exists(cert_file) and os.path.exists(key_file):
@@ -3430,8 +3431,15 @@ def mount_network_share(share_type, server, share, user=None, password=None, mou
     """Mount a SMB or NFS network share."""
     os.makedirs(mountpoint, exist_ok=True)
     if share_type == "smb":
-        cred_part = f"username={shlex.quote(user)},password={shlex.quote(password)}" if user else "guest"
-        cmd = f"mount -t cifs //{shlex.quote(server)}/{shlex.quote(share)} {mountpoint} -o {cred_part},vers=3.0"
+        cred_file = "/tmp/ittools/.smb_credentials"
+        os.makedirs(os.path.dirname(cred_file), exist_ok=True)
+        with open(cred_file, "w") as f:
+            if user:
+                f.write(f"username={user}\npassword={password}\n")
+            else:
+                f.write("username=guest\n")
+        os.chmod(cred_file, 0o600)
+        cmd = f"mount -t cifs //{shlex.quote(server)}/{shlex.quote(share)} {mountpoint} -o credentials={cred_file},vers=3.0"
     elif share_type == "nfs":
         cmd = f"mount -t nfs {shlex.quote(server)}:{shlex.quote(share)} {mountpoint}"
     else:
@@ -3573,18 +3581,20 @@ def list_network_images(mountpoint="/mnt/netshare"):
 
 # Auth rate limiting
 _auth_attempts = {}
+_auth_attempts_lock = threading.Lock()
 
 def _check_auth_rate(ip):
     now = time.time()
-    # Clean old entries
-    _auth_attempts.update({k: v for k, v in _auth_attempts.items() if now - v[-1] < 300})
-    attempts = _auth_attempts.get(ip, [])
-    attempts = [t for t in attempts if now - t < 300]  # Last 5 minutes
-    if len(attempts) >= 10:
-        return False
-    attempts.append(now)
-    _auth_attempts[ip] = attempts
-    return True
+    with _auth_attempts_lock:
+        # Clean old entries
+        _auth_attempts.update({k: v for k, v in _auth_attempts.items() if now - v[-1] < 300})
+        attempts = _auth_attempts.get(ip, [])
+        attempts = [t for t in attempts if now - t < 300]  # Last 5 minutes
+        if len(attempts) >= 10:
+            return False
+        attempts.append(now)
+        _auth_attempts[ip] = attempts
+        return True
 
 
 # ---- HTTP Handler ----
@@ -3766,6 +3776,7 @@ def disk_benchmark_thread(tid, disk, test="all"):
     """Run disk benchmark in background thread."""
     results = {}
     safe_disk = sanitize_device(disk)
+    # Note: benchmarks run on /tmp (system disk) - results reflect system disk speed
     test_file = f"/tmp/flowbit-bench-{safe_disk}"
     tests = ["seq_write", "seq_read", "rand_read", "rand_write"] if test == "all" else [test]
     try:
@@ -3795,12 +3806,12 @@ def disk_benchmark_thread(tid, disk, test="all"):
                 r = ""
             results[t] = parse_benchmark_result(r, t)
         run_cmd(f"rm -f {test_file}", timeout=5)
-        finish_task(tid)
         update_task(tid, results=results)
+        finish_task(tid)
     except Exception as e:
         run_cmd(f"rm -f {test_file}", timeout=5)
-        finish_task(tid, exit_code=1)
         update_task(tid, error=str(e), results=results)
+        finish_task(tid, exit_code=1)
 
 
 # ---- IP Calculator ----
@@ -3809,16 +3820,23 @@ def ip_calculator(cidr):
     """Calculate IP network details from CIDR notation."""
     try:
         net = ipaddress.ip_network(cidr, strict=False)
-        hosts = list(net.hosts())
+        if net.prefixlen < 31:
+            first = net.network_address + 1
+            last = net.broadcast_address - 1
+            num_hosts = max(0, net.num_addresses - 2)
+        else:
+            first = net.network_address
+            last = net.broadcast_address
+            num_hosts = net.num_addresses
         return {
             "network": str(net.network_address),
             "broadcast": str(net.broadcast_address),
             "netmask": str(net.netmask),
             "wildcard": str(net.hostmask),
             "prefix": net.prefixlen,
-            "hosts": net.num_addresses - 2 if net.prefixlen < 31 else net.num_addresses,
-            "first_host": str(hosts[0]) if hosts else str(net.network_address),
-            "last_host": str(hosts[-1]) if hosts else str(net.broadcast_address),
+            "hosts": num_hosts,
+            "first_host": str(first),
+            "last_host": str(last),
             "is_private": net.is_private,
             "class": "A" if net.network_address.packed[0] < 128 else "B" if net.network_address.packed[0] < 192 else "C",
         }
@@ -4026,9 +4044,19 @@ def vnc_status():
 
 
 # ---- Active Directory / LDAP Lookup (A04) ----
+
+def sanitize_ldap_value(val):
+    """Escape LDAP special characters."""
+    val = str(val)
+    for char in ['\\', '*', '(', ')', '\x00']:
+        val = val.replace(char, '\\' + hex(ord(char))[2:].zfill(2))
+    return val
+
 def ldap_search(server, base_dn, user, password, search_filter, attributes=None):
     """Search AD/LDAP using ldapsearch."""
-    safe_server = shlex.quote(server)
+    # Validate server hostname/IP
+    if not re.match(r'^[a-zA-Z0-9.\-]+$', server):
+        return {"success": False, "error": "Ungültiger Servername"}
     safe_dn = shlex.quote(base_dn)
     safe_user = shlex.quote(user)
     safe_pass = shlex.quote(password)
@@ -4036,7 +4064,7 @@ def ldap_search(server, base_dn, user, password, search_filter, attributes=None)
 
     attr_str = " ".join(shlex.quote(a) for a in attributes) if attributes else ""
 
-    cmd = (f"ldapsearch -x -H ldap://{safe_server} -b {safe_dn} "
+    cmd = (f"ldapsearch -x -H ldap://{server} -b {safe_dn} "
            f"-D {safe_user} -w {safe_pass} {safe_filter} {attr_str} 2>&1")
 
     result = run_cmd(cmd, timeout=15)
@@ -4070,7 +4098,17 @@ def ldap_search(server, base_dn, user, password, search_filter, attributes=None)
 # ---- VPN Client / WireGuard (E-item) ----
 def vpn_connect(config_b64):
     """Create WireGuard config and connect."""
-    config = base64.b64decode(config_b64).decode()
+    try:
+        config = base64.b64decode(config_b64).decode()
+    except Exception:
+        return {"success": False, "error": "Ungültige Base64-Daten"}
+    # Strip dangerous directives
+    safe_lines = []
+    for line in config.split('\n'):
+        if re.match(r'^\s*(PostUp|PreUp|PostDown|PreDown|SaveConfig)\s*=', line, re.IGNORECASE):
+            continue  # Skip dangerous directives
+        safe_lines.append(line)
+    config = '\n'.join(safe_lines)
     config_path = "/tmp/ittools/wg0.conf"
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     with open(config_path, "w") as f:
@@ -4184,6 +4222,11 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             if part.startswith("flowbit_auth="):
                 cookie_token = part.split("=", 1)[1]
                 break
+        # Also check query param token for SSE
+        qs = parse_qs(urlparse(self.path).query)
+        qs_token = qs.get("token", [""])[0]
+        if qs_token and validate_session(qs_token):
+            return True
         # Check session token first (D02)
         effective_token = token or cookie_token
         if effective_token and validate_session(effective_token):
@@ -4438,6 +4481,10 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
         # ---- SSE Server-Sent Events (C02) ----
         elif path == "/api/events":
+            with sse_clients_lock:
+                if len(sse_clients) >= MAX_SSE_CLIENTS:
+                    self.send_json({"error": "Zu viele SSE-Clients"}, 429)
+                    return
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Cache-Control", "no-cache")
@@ -5323,12 +5370,16 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
         # ---- Network Image / Disk Imaging on Network Shares (A03) ----
         elif path == "/api/netimage/mount":
+            ALLOWED_MOUNTPOINTS = ["/mnt/netshare", "/mnt/nfs", "/mnt/smb"]
             share_type = data.get("type", "")
             server = data.get("server", "")
             share = data.get("share", "")
             user = data.get("user")
             password = data.get("password")
             mountpoint = data.get("mountpoint", "/mnt/netshare")
+            if mountpoint not in ALLOWED_MOUNTPOINTS:
+                self.send_json({"success": False, "error": "Ungültiger Mountpoint"}, 400)
+                return
             if not share_type or not server or not share:
                 self.send_json({"error": "type, server and share required"}, 400)
                 return
@@ -5360,6 +5411,12 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             if not image_path or not target:
                 self.send_json({"error": "image_path and target required"}, 400)
                 return
+            # Validate image_path against safe prefixes
+            safe_image_path = sanitize_path(image_path)
+            if not safe_image_path:
+                self.send_json({"success": False, "error": "Ungültiger Image-Pfad"}, 400)
+                return
+            image_path = safe_image_path
             safe_tgt = sanitize_device(target)
             audit_record("netimage_restore", f"image={image_path}, target={safe_tgt}", source_ip)
             log_action("Network Restore", f"{image_path} -> /dev/{safe_tgt}", source_ip)
@@ -5412,7 +5469,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             base_dn = data.get("base_dn", "")
             user = data.get("user", "")
             password = data.get("password", "")
-            search_name = data.get("name", "*")
+            search_name = sanitize_ldap_value(data.get("name", "*"))
             if not server or not base_dn or not user or not password:
                 self.send_json({"error": "server, base_dn, user und password erforderlich"}, 400)
             else:
@@ -5426,7 +5483,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             base_dn = data.get("base_dn", "")
             user = data.get("user", "")
             password = data.get("password", "")
-            search_name = data.get("name", "*")
+            search_name = sanitize_ldap_value(data.get("name", "*"))
             if not server or not base_dn or not user or not password:
                 self.send_json({"error": "server, base_dn, user und password erforderlich"}, 400)
             else:
@@ -5440,7 +5497,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             base_dn = data.get("base_dn", "")
             user = data.get("user", "")
             password = data.get("password", "")
-            search_name = data.get("name", "*")
+            search_name = sanitize_ldap_value(data.get("name", "*"))
             if not server or not base_dn or not user or not password:
                 self.send_json({"error": "server, base_dn, user und password erforderlich"}, 400)
             else:
@@ -5622,5 +5679,17 @@ if __name__ == "__main__":
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nShutting down...")
+        print("\nShutdown...")
+        try:
+            stop_vnc_proxy()
+        except Exception:
+            pass
+        try:
+            vpn_disconnect()
+        except Exception:
+            pass
+        try:
+            run_cmd("nmcli connection down Hotspot 2>/dev/null", timeout=5)
+        except Exception:
+            pass
         server.shutdown()
