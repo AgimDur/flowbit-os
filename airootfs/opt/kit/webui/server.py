@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 PORT = 8080
 HTTPS_PORT = 8443  # HTTPS for remote access
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "6.2.5"
+FLOWBIT_VERSION = "6.2.6"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
