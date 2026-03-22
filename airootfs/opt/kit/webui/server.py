@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 PORT = 8080
 HTTPS_PORT = 8443  # HTTPS for remote access
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "6.2.2"
+FLOWBIT_VERSION = "6.2.3"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -4211,6 +4211,10 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
     def _check_auth(self):
         """Check auth token or session."""
+        # Localhost bypass — Kiosk-Modus braucht keinen PIN
+        client_ip = self.client_address[0] if self.client_address else ""
+        if client_ip in ("127.0.0.1", "::1", "localhost"):
+            return True
         path = urlparse(self.path).path
         if not path.startswith("/api/") or path in ("/api/auth/verify", "/api/auth"):
             return True
