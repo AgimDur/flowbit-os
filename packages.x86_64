@@ -28,6 +28,7 @@ binutils
 # Wiper module dependencies
 hdparm
 nvme-cli
+nwipe
 sdparm
 smartmontools
 pv
@@ -67,13 +68,13 @@ tpm2-tools
 zstd
 cifs-utils
 nfs-utils
+rsync
+speedtest-cli
 
 # GUI / Web UI
 xorg-server
 xorg-xinit
 xorg-xset
-xf86-video-vesa
-xf86-video-fbdev
 xf86-video-intel
 xf86-video-amdgpu
 xf86-video-nouveau

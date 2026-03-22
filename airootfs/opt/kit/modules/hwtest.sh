@@ -5,6 +5,7 @@
 # =============================================================================
 
 set -uo pipefail
+source /opt/kit/modules/common.sh 2>/dev/null
 
 # ─── Farben ───────────────────────────────────────────────────────────────────
 R='\033[1;31m'
@@ -72,9 +73,7 @@ save_report() {
     } > "/tmp/$filename"
 
     local usb_path=""
-    for mp in /mnt/usb* /mnt/*/  /run/media/*/*/; do
-        [[ -w "$mp" ]] && usb_path="$mp" && break
-    done
+    usb_path=$(find_usb_storage)
     if [[ -n "$usb_path" ]]; then
         cp "/tmp/$filename" "${usb_path}${filename}"
         echo -e "    ${G}[OK] Gespeichert: ${usb_path}${filename}${NC}"
@@ -191,8 +190,10 @@ do_ram_test() {
 
     if [[ $errors -eq 0 ]]; then
         result_ok "RAM Test bestanden (${passes} Durchgaenge, ${test_mb} MB, 0 Fehler)"
+        log_session "HWTEST: RAM Test bestanden (${passes}x, ${test_mb}MB, 0 Fehler)"
     else
         result_fail "RAM Test: ${errors} Fehler gefunden!"
+        log_session "HWTEST: RAM Test FEHLER (${errors} Fehler)"
     fi
 
     pause_key
@@ -413,6 +414,7 @@ do_cpu_test() {
 
     echo ""
     result_ok "CPU Stresstest bestanden (${duration}s, ${cores} Kerne)"
+    log_session "HWTEST: CPU Stresstest bestanden (${duration}s, ${cores} Kerne)"
     [[ -n "$temp_start" && -n "$temp_end" ]] && result_info "Temperatur: ${temp_start}C -> ${temp_end}C (Delta: $((temp_end - temp_start))C)"
 
     # Frequenz-Check
@@ -499,7 +501,7 @@ do_full_test() {
     echo -e "    ${C}[0]${NC}  Zurueck"
     echo -ne "    Auswahl: "
     read -r sel
-    [[ "$sel" == "1" ]] && save_report "HWTEST_FULL"
+    [[ "$sel" == "1" ]] && { save_report "HWTEST_FULL"; log_session "HWTEST: Komplett-Test Report exportiert"; }
 
     pause_key
 }

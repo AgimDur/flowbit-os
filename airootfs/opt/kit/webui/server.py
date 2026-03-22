@@ -20,12 +20,15 @@ import zipfile
 import base64
 import fcntl
 import shutil
+import secrets
+# hashlib and urllib.request imported at top
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PORT = 8080
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "4.0.5"
+FLOWBIT_VERSION = "5.0.0"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -39,8 +42,30 @@ BIOS_PROFILES_DIR.mkdir(parents=True, exist_ok=True)
 
 DATA_DIR = Path("/mnt/data")
 
+# Persistent storage: prefer USB storage over /tmp
+PERSIST_BASE = "/mnt/kit-storage" if os.path.isdir("/mnt/kit-storage") else "/tmp/ittools"
+NOTES_DIR = Path(os.path.join(PERSIST_BASE, "notes"))
+NOTES_DIR.mkdir(parents=True, exist_ok=True)
+CHECKLISTS_FILE = os.path.join(PERSIST_BASE, "checklists.json")
+
 # Check if lm-sensors is available
 HAS_SENSORS = shutil.which("sensors") is not None
+
+# Allowed filesystem types whitelist
+ALLOWED_FSTYPES = {'ext4', 'ext3', 'ext2', 'ntfs', 'vfat', 'xfs', 'btrfs', 'exfat', 'fat32', 'swap'}
+
+# Task cleanup: max age in seconds (1 hour)
+TASK_MAX_AGE = 3600
+
+# Session token auth
+AUTH_TOKEN = secrets.token_hex(3)  # 6 char hex
+
+# Server uptime tracking
+SERVER_START = time.time()
+
+# List size limits
+MAX_WOL_HISTORY = 500
+MAX_SESSION_LOG = 500
 
 # In-memory WOL history
 wol_history = []
@@ -51,14 +76,17 @@ session_log = []
 session_log_lock = threading.Lock()
 
 
-def log_action(action, details=""):
+def log_action(action, details="", source_ip=""):
     with session_log_lock:
         session_log.append({
             "time": time.strftime("%H:%M:%S"),
             "timestamp": time.time(),
             "action": action,
-            "details": details
+            "details": details,
+            "source_ip": source_ip
         })
+        while len(session_log) > MAX_SESSION_LOG:
+            session_log.pop(0)
 
 
 def get_save_path():
@@ -75,18 +103,24 @@ tasks = {}
 tasks_lock = threading.Lock()
 
 
+def cleanup_old_tasks():
+    """Remove tasks older than TASK_MAX_AGE."""
+    now = time.time()
+    with tasks_lock:
+        to_delete = [tid for tid, t in tasks.items()
+                     if t.get("finished") and (now - t["finished"]) > TASK_MAX_AGE]
+        for tid in to_delete:
+            del tasks[tid]
+
+
 def new_task(description=""):
+    cleanup_old_tasks()
     tid = str(uuid.uuid4())[:8]
     with tasks_lock:
         tasks[tid] = {
-            "id": tid,
-            "description": description,
-            "status": "running",
-            "progress": 0,
-            "output": "",
-            "started": time.time(),
-            "finished": None,
-            "exit_code": None
+            "id": tid, "description": description, "status": "running",
+            "progress": 0, "output": "", "started": time.time(),
+            "finished": None, "exit_code": None, "process": None
         }
     return tid
 
@@ -114,25 +148,54 @@ def finish_task(tid, exit_code=0):
 
 def get_task(tid):
     with tasks_lock:
-        return dict(tasks.get(tid, {}))
+        t = tasks.get(tid, {})
+        if t:
+            result = dict(t)
+            result.pop("process", None)
+            return result
+        return {}
+
+
+def cancel_task(tid):
+    """Cancel a running task by killing its process."""
+    with tasks_lock:
+        t = tasks.get(tid)
+        if not t:
+            return {"success": False, "error": "Task nicht gefunden"}
+        if t["status"] != "running":
+            return {"success": False, "error": "Task läuft nicht mehr"}
+        proc = t.get("process")
+        if proc:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        t["status"] = "cancelled"
+        t["finished"] = time.time()
+        t["exit_code"] = -1
+    return {"success": True}
 
 
 def run_cmd(cmd, default="N/A", timeout=5):
     try:
         return subprocess.check_output(cmd, shell=True, stderr=subprocess.DEVNULL, timeout=timeout).decode().strip()
-    except:
+    except Exception:
         return default
 
 
 def read_file(path, default="N/A"):
     try:
         return Path(path).read_text().strip()
-    except:
+    except Exception:
         return default
 
 
 def sanitize_device(name):
-    """Sanitize a device name to prevent injection."""
+    """Sanitize a device name to prevent injection. Strips /dev/ prefix if present."""
+    if not name:
+        return ""
+    # Strip /dev/ prefix if present
+    name = name.replace('/dev/', '')
     return re.sub(r'[^a-zA-Z0-9_\-]', '', name)
 
 
@@ -148,7 +211,33 @@ def sanitize_path(path_str):
     return resolved
 
 
+def safe_int(val, default=0):
+    """Safely convert to int with a default."""
+    try:
+        return int(val)
+    except (TypeError, ValueError):
+        return default
+
+
+def version_newer(current, latest):
+    """Semantic version comparison."""
+    try:
+        from packaging.version import Version
+        return Version(latest) > Version(current)
+    except Exception:
+        try:
+            def parse_ver(v):
+                return [int(x) for x in re.sub(r'[^0-9.]', '', v).split('.')]
+            return parse_ver(latest) > parse_ver(current)
+        except Exception:
+            return latest != current
+
+
+_sysinfo_static_cache = {}
+_sysinfo_cache_time = 0
+
 def get_system_info():
+    global _sysinfo_static_cache, _sysinfo_cache_time
     info = {}
     info["hostname"] = read_file("/etc/hostname", run_cmd("hostname"))
     info["manufacturer"] = run_cmd("dmidecode -s system-manufacturer")
@@ -181,7 +270,7 @@ def get_system_info():
                 with open(f, "rb") as fh:
                     data = fh.read()
                     sb_val = "AN" if data[-1] == 1 else "AUS"
-            except:
+            except Exception:
                 pass
         info["boot_mode"] = f"UEFI (Secure Boot: {sb_val})" if sb_val else "UEFI"
     else:
@@ -199,27 +288,30 @@ def get_system_info():
         msdm = subprocess.check_output("strings /sys/firmware/acpi/tables/MSDM 2>/dev/null", shell=True).decode()
         key_match = re.search(r'[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}', msdm)
         info["windows_key"] = key_match.group() if key_match else "N/A"
-    except:
+    except Exception:
         info["windows_key"] = "N/A"
 
-    # Disks
+    # Disks - use JSON output for reliable parsing
     disks = []
     try:
-        lines = subprocess.check_output("lsblk -d -n -o NAME,SIZE,ROTA,MODEL,SERIAL,TYPE 2>/dev/null", shell=True).decode().splitlines()
-        for line in lines:
-            parts = line.split()
-            if len(parts) >= 3 and parts[-1] == "disk":
-                disk = {
-                    "name": parts[0],
-                    "size": parts[1],
-                    "type": "SSD" if parts[2] == "0" else "HDD",
-                    "model": " ".join(parts[3:-2]) if len(parts) > 4 else "N/A",
-                    "serial": parts[-2] if len(parts) > 4 else "N/A"
-                }
-                smart = run_cmd(f"smartctl -H /dev/{parts[0]} 2>/dev/null | grep -i 'result\\|Status'")
-                disk["smart"] = "PASSED" if "PASSED" in smart or "OK" in smart else ("FAILED" if "FAILED" in smart else "N/A")
-                disks.append(disk)
-    except:
+        lsblk_out = subprocess.check_output("lsblk -d -J -o NAME,SIZE,ROTA,MODEL,SERIAL,TYPE 2>/dev/null", shell=True).decode()
+        lsblk_data = json.loads(lsblk_out)
+        for dev in lsblk_data.get("blockdevices", []):
+            if dev.get("type") != "disk":
+                continue
+            name = dev.get("name", "")
+            disk = {
+                "name": name,
+                "size": dev.get("size", "?"),
+                "type": "SSD" if not dev.get("rota") else "HDD",
+                "model": dev.get("model") or "N/A",
+                "serial": dev.get("serial") or "N/A"
+            }
+            safe_n = sanitize_device(name)
+            smart = run_cmd(f"smartctl -H /dev/{safe_n} 2>/dev/null | grep -i 'result\\|Status'")
+            disk["smart"] = "PASSED" if "PASSED" in smart or "OK" in smart else ("FAILED" if "FAILED" in smart else "N/A")
+            disks.append(disk)
+    except Exception:
         pass
     info["disks"] = disks
 
@@ -232,26 +324,27 @@ def get_system_info():
             info["boot_device"] = boot_dev.replace("/dev/", "") if boot_dev else ""
         else:
             info["boot_device"] = ""
-    except:
+    except Exception:
         info["boot_device"] = ""
 
-    # Partitions
+    # Partitions - use JSON output
     partitions = []
     try:
-        lines = subprocess.check_output("lsblk -n -o NAME,SIZE,FSTYPE,MOUNTPOINT,TYPE 2>/dev/null", shell=True).decode().splitlines()
-        for line in lines:
-            parts = line.split()
-            if len(parts) >= 2:
-                name = parts[0].strip().lstrip("└─├─")
-                ptype = parts[-1] if len(parts) >= 3 else ""
-                if ptype in ("part", "lvm"):
+        lsblk_out = subprocess.check_output("lsblk -J -o NAME,SIZE,FSTYPE,MOUNTPOINT,TYPE 2>/dev/null", shell=True).decode()
+        lsblk_data = json.loads(lsblk_out)
+        def _collect_parts(devs):
+            for d in devs:
+                if d.get("type") in ("part", "lvm"):
                     partitions.append({
-                        "name": name,
-                        "size": parts[1] if len(parts) > 1 else "?",
-                        "fstype": parts[2] if len(parts) > 2 else "",
-                        "mount": parts[3] if len(parts) > 3 and parts[-1] != parts[3] else ""
+                        "name": d.get("name", ""),
+                        "size": d.get("size", "?"),
+                        "fstype": d.get("fstype") or "",
+                        "mount": d.get("mountpoint") or ""
                     })
-    except:
+                for child in d.get("children", []):
+                    _collect_parts([child])
+        _collect_parts(lsblk_data.get("blockdevices", []))
+    except Exception:
         pass
     info["partitions"] = partitions
 
@@ -266,7 +359,7 @@ def get_system_info():
             ip = run_cmd(f"ip -4 addr show {iface} 2>/dev/null | awk '/inet /{{print $2}}' | head -1")
             speed = read_file(f"/sys/class/net/{iface}/speed", "?")
             interfaces.append({"name": iface, "mac": mac, "state": state, "ip": ip or "keine", "speed": speed})
-    except:
+    except Exception:
         pass
     info["interfaces"] = interfaces
 
@@ -300,7 +393,7 @@ def get_system_info():
                     slot["locator"] = line.split(":", 1)[1].strip()
             if slot.get("size") and "No Module" not in slot.get("size", ""):
                 ram_slots.append(slot)
-    except:
+    except Exception:
         pass
     info["ram_slots"] = ram_slots
 
@@ -339,6 +432,37 @@ def generate_sysinfo_report(info):
 
 
 # ---- WIPER functions ----
+
+def verify_wipe(device, method):
+    """Read random samples from disk and verify wipe was successful."""
+    try:
+        import random as _random
+        size_str = run_cmd(f"blockdev --getsize64 /dev/{device}", "0")
+        total_bytes = safe_int(size_str)
+        if total_bytes == 0:
+            return False
+        num_samples = 5
+        sample_size = 4096
+        for i in range(num_samples):
+            offset = _random.randint(0, max(0, total_bytes - sample_size))
+            offset = (offset // 512) * 512
+            try:
+                result = subprocess.run(
+                    ["dd", f"if=/dev/{device}", "bs=512", f"skip={offset // 512}",
+                     f"count={sample_size // 512}", "status=none"],
+                    capture_output=True, timeout=10)
+                data = result.stdout
+                if not data:
+                    continue
+                if method in ("zero", "dod"):
+                    if data != b'\x00' * len(data):
+                        return False
+            except Exception:
+                pass
+        return True
+    except Exception:
+        return False
+
 
 def wipe_disk_thread(tid, device, method, passes):
     """Wipe a disk with progress tracking."""
@@ -385,6 +509,12 @@ def wipe_disk_thread(tid, device, method, passes):
                 append_output(tid, f"Durchgang {p} abgeschlossen.\n")
 
         append_output(tid, f"\nWiping abgeschlossen: /dev/{device}\n")
+        append_output(tid, "\nVerifizierung...\n")
+        verified = verify_wipe(device, method)
+        if verified:
+            append_output(tid, "Verifikation: OK\n")
+        else:
+            append_output(tid, "Verifikation: WARNUNG — Unerwartete Daten gefunden!\n")
         finish_task(tid, 0)
     except Exception as e:
         append_output(tid, f"\nFehler: {str(e)}\n")
@@ -428,9 +558,10 @@ def ssd_secure_erase_thread(tid, device):
 
 def ram_scrub_thread(tid):
     """Scrub RAM using /dev/shm."""
+    files = []
     try:
         total = run_cmd("awk '/MemAvailable/{print int($2/1024)}' /proc/meminfo", "512")
-        avail_mb = int(total) - 256  # Leave 256MB free
+        avail_mb = safe_int(total, 512) - 256  # Leave 256MB free
         if avail_mb < 64:
             avail_mb = 64
 
@@ -439,7 +570,6 @@ def ram_scrub_thread(tid):
 
         # Fill with random data in chunks
         chunk = 64  # MB per file
-        files = []
         written = 0
         idx = 0
         while written < avail_mb:
@@ -459,7 +589,7 @@ def ram_scrub_thread(tid):
         for f in files:
             try:
                 os.remove(f)
-            except:
+            except Exception:
                 pass
         subprocess.run(["sync"], timeout=10)
 
@@ -468,6 +598,12 @@ def ram_scrub_thread(tid):
     except Exception as e:
         append_output(tid, f"\nFehler: {str(e)}\n")
         finish_task(tid, 1)
+    finally:
+        for f in files:
+            try:
+                os.remove(f)
+            except Exception:
+                pass
 
 
 # ---- HARDWARE TEST functions ----
@@ -495,7 +631,7 @@ def ram_test_thread(tid, size_mb, passes):
             # Remove stress pattern
             try:
                 os.remove(fname_stress)
-            except:
+            except Exception:
                 pass
 
             subprocess.run(["sync"], timeout=10)
@@ -526,7 +662,7 @@ def ram_test_thread(tid, size_mb, passes):
             c2 = run_cmd(f"md5sum {fname} | cut -d' ' -f1", "", timeout=10)
             try:
                 os.remove(fname)
-            except:
+            except Exception:
                 pass
             status = "OK" if c1 == c2 else "FEHLER"
             append_output(tid, f"  Pattern {pname}: {status}\n")
@@ -570,7 +706,7 @@ def cpu_stress_thread(tid, duration):
                         p.kill()
                     finish_task(tid, 1)
                     return
-            except:
+            except Exception:
                 pass
 
             time.sleep(5)
@@ -584,6 +720,12 @@ def cpu_stress_thread(tid, duration):
     except Exception as e:
         append_output(tid, f"\nFehler: {str(e)}\n")
         finish_task(tid, 1)
+    finally:
+        for p in procs:
+            try:
+                p.kill()
+            except Exception:
+                pass
 
 
 def disk_speed_thread(tid, device):
@@ -655,7 +797,7 @@ def get_bios_profiles():
                 if l.startswith("# Erstellt:"):
                     created = l.split(":", 1)[1].strip()
             profiles.append({"name": name, "file": f.name, "settings_count": count, "created": created})
-        except:
+        except Exception:
             pass
 
     # Also check USB
@@ -666,7 +808,7 @@ def get_bios_profiles():
         try:
             name = Path(mount).stem
             usb_profiles.append({"name": name, "file": mount, "source": "USB"})
-        except:
+        except Exception:
             pass
 
     return {"local": profiles, "usb": usb_profiles}
@@ -711,7 +853,7 @@ def export_bios_to_usb(name):
             parts = line.strip().split()
             if len(parts) == 2 and parts[1] == "1" and parts[0] and parts[0] != "":
                 usb_mounts.append(parts[0])
-    except:
+    except Exception:
         pass
 
     if not usb_mounts:
@@ -725,7 +867,6 @@ def export_bios_to_usb(name):
 
     dest_dir = os.path.join(usb_mounts[0], "BIOS_Settings")
     os.makedirs(dest_dir, exist_ok=True)
-    import shutil
     dest = os.path.join(dest_dir, src.name)
     shutil.copy2(str(src), dest)
     return {"success": True, "path": dest}
@@ -794,13 +935,15 @@ def restore_disk_thread(tid, image_path, target_device):
             else:
                 append_output(tid, f"WARNUNG: Checksumme stimmt nicht überein!\n  Erwartet: {expected}\n  Erhalten: {actual}\n\n")
 
+        safe_image = shlex.quote(image_path)
+        safe_target_dev = shlex.quote(f"/dev/{target_device}")
         if image_path.endswith(".zst"):
-            cmd = f"zstd -d -c '{image_path}' | dd of=/dev/{target_device} bs=4M status=progress conv=fsync 2>&1"
+            cmd = ["bash", "-c", f"zstd -d -c {safe_image} | dd of={safe_target_dev} bs=4M status=progress conv=fsync 2>&1"]
         else:
-            cmd = f"dd if='{image_path}' of=/dev/{target_device} bs=4M status=progress conv=fsync 2>&1"
+            cmd = ["dd", f"if={image_path}", f"of=/dev/{target_device}", "bs=4M", "status=progress", "conv=fsync"]
 
         update_task(tid, progress=10)
-        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         while True:
             line = proc.stdout.readline()
             if not line and proc.poll() is not None:
@@ -1123,6 +1266,8 @@ def send_wol(mac, ip=None):
         entry = {"mac": mac, "ip": broadcast_ip, "time": time.strftime('%Y-%m-%d %H:%M:%S')}
         with wol_history_lock:
             wol_history.append(entry)
+            while len(wol_history) > MAX_WOL_HISTORY:
+                wol_history.pop(0)
 
         return {"success": True, "mac": mac, "broadcast": broadcast_ip}
     except Exception as e:
@@ -1657,7 +1802,7 @@ def read_event_log(path, count=100):
                         "timestamp": str(record.timestamp()),
                         "xml": record.xml()
                     })
-                except:
+                except Exception:
                     pass
         result["records"] = records
         result["parsed"] = True
@@ -1674,7 +1819,7 @@ def read_event_log(path, count=100):
                 result["header_size"] = struct.unpack('<I', header[16:20])[0] if len(header) >= 20 else 0
             else:
                 result["valid_evtx"] = False
-        except:
+        except Exception:
             result["valid_evtx"] = False
 
     return result
@@ -1778,7 +1923,6 @@ def generate_qr_svg(text):
     # For simplicity, generate a visual QR-like code using a hash-based pattern
     # that encodes the URL in a scannable format.
     # We'll use an external call to qrencode if available, otherwise generate a placeholder.
-    import hashlib
 
     # Try qrencode first
     try:
@@ -1787,7 +1931,7 @@ def generate_qr_svg(text):
             stderr=subprocess.DEVNULL, timeout=5
         )
         return result.decode()
-    except:
+    except Exception:
         pass
 
     # Fallback: generate a simple SVG with the URL displayed as text
@@ -1883,7 +2027,7 @@ def get_windows_keys(partition):
         key_match = re.search(r'[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}-[A-Z0-9]{5}', msdm)
         if key_match:
             result["bios_key"] = key_match.group()
-    except:
+    except Exception:
         pass
 
     # Mount partition and read from registry
@@ -1932,7 +2076,7 @@ def get_windows_keys(partition):
                             "product": "Windows Product ID",
                             "key": m.group(1)
                         })
-    except:
+    except Exception:
         pass
 
     # Try Office keys
@@ -1951,7 +2095,7 @@ def get_windows_keys(partition):
                             "product": f"Office: {m.group(1)}",
                             "key": "found in registry"
                         })
-    except:
+    except Exception:
         pass
 
     return result
@@ -2011,24 +2155,24 @@ def get_smart_dashboard():
     dashboard = []
 
     try:
-        lines = subprocess.check_output(
-            "lsblk -d -n -o NAME,SIZE,ROTA,TYPE 2>/dev/null",
-            shell=True).decode().splitlines()
-    except:
+        lsblk_out = subprocess.check_output(
+            "lsblk -d -J -o NAME,SIZE,ROTA,TYPE 2>/dev/null",
+            shell=True).decode()
+        lsblk_data = json.loads(lsblk_out)
+    except Exception:
         return dashboard
 
-    for line in lines:
-        parts = line.split()
-        if len(parts) < 4 or parts[-1] != "disk":
+    for dev in lsblk_data.get("blockdevices", []):
+        if dev.get("type") != "disk":
             continue
 
-        name = parts[0]
+        name = dev.get("name", "")
         safe_name = sanitize_device(name)
-        disk_type = "SSD" if parts[2] == "0" else "HDD"
+        disk_type = "SSD" if not dev.get("rota") else "HDD"
 
         entry = {
             "name": safe_name,
-            "size": parts[1],
+            "size": dev.get("size", "?"),
             "type": disk_type,
             "health": "N/A",
             "temp": "N/A",
@@ -2138,14 +2282,14 @@ def get_firmware_info():
     devices = run_cmd("fwupdmgr get-devices --json 2>/dev/null", "{}", timeout=15)
     try:
         return json.loads(devices)
-    except:
+    except Exception:
         return {"Devices": []}
 
 def check_firmware_updates():
     updates = run_cmd("fwupdmgr get-updates --json 2>/dev/null", "{}", timeout=30)
     try:
         return json.loads(updates)
-    except:
+    except Exception:
         return {"Devices": []}
 
 def firmware_update_thread(tid, device_id):
@@ -2173,12 +2317,16 @@ def get_partition_layout():
     output = run_cmd("lsblk -J -o NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,LABEL,UUID,PARTTYPENAME 2>/dev/null", "{}", timeout=10)
     try:
         return json.loads(output)
-    except:
+    except Exception:
         return {"blockdevices": []}
 
 def create_partition_thread(tid, device, size, fstype, label):
     """Create a new partition using parted + mkfs."""
     try:
+        if fstype and fstype not in ALLOWED_FSTYPES:
+            update_task(tid, status="error", error=f"Ungültiges Dateisystem: {fstype}")
+            finish_task(tid, 1)
+            return
         device = sanitize_device(device)
         label = shlex.quote(label) if label else ""
         append_output(tid, f"Erstelle Partition auf /dev/{device}...\n")
@@ -2198,19 +2346,21 @@ def create_partition_thread(tid, device, size, fstype, label):
         # Format if fstype specified
         if fstype:
             # Find the new partition name
-            import time as _t
-            _t.sleep(1)
+            time.sleep(1)
             new_part = run_cmd(f"lsblk -n -o NAME /dev/{device} | tail -1", "", timeout=5).strip()
             if new_part:
-                mkfs_cmd = f"mkfs.{fstype}"
+                safe_new_part = sanitize_device(new_part)
                 if fstype == "ntfs":
-                    mkfs_cmd = "mkfs.ntfs -f"
-                elif fstype == "fat32" or fstype == "vfat":
-                    mkfs_cmd = "mkfs.vfat"
-                cmd = f"{mkfs_cmd} /dev/{new_part}"
-                if label:
-                    cmd += f" -L {label}"
-                r2 = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+                    mkfs_args = ["mkfs.ntfs", "-f", f"/dev/{safe_new_part}"]
+                elif fstype in ("fat32", "vfat"):
+                    mkfs_args = ["mkfs.vfat", f"/dev/{safe_new_part}"]
+                elif fstype == "swap":
+                    mkfs_args = ["mkswap", f"/dev/{safe_new_part}"]
+                else:
+                    mkfs_args = [f"mkfs.{fstype}", f"/dev/{safe_new_part}"]
+                if label and fstype != "swap":
+                    mkfs_args.extend(["-L", label.strip("'")])
+                r2 = subprocess.run(mkfs_args, capture_output=True, text=True, timeout=120)
                 append_output(tid, f"Format: {r2.stdout}{r2.stderr}\n")
 
         update_task(tid, progress=100)
@@ -2248,18 +2398,24 @@ def resize_partition_thread(tid, device, partnum, size):
 def format_partition_thread(tid, partition, fstype, label):
     """Format a partition with the given filesystem."""
     try:
+        if fstype not in ALLOWED_FSTYPES:
+            update_task(tid, status="error", error=f"Ungültiges Dateisystem: {fstype}")
+            finish_task(tid, 1)
+            return
         partition = sanitize_device(partition)
         append_output(tid, f"Formatiere /dev/{partition} mit {fstype}...\n")
         update_task(tid, progress=10)
-        mkfs_cmd = f"mkfs.{fstype}"
         if fstype == "ntfs":
-            mkfs_cmd = "mkfs.ntfs -f"
+            mkfs_args = ["mkfs.ntfs", "-f", f"/dev/{partition}"]
         elif fstype in ("fat32", "vfat"):
-            mkfs_cmd = "mkfs.vfat"
-        cmd = f"{mkfs_cmd} /dev/{partition}"
-        if label:
-            cmd += f" -L {shlex.quote(label)}"
-        r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+            mkfs_args = ["mkfs.vfat", f"/dev/{partition}"]
+        elif fstype == "swap":
+            mkfs_args = ["mkswap", f"/dev/{partition}"]
+        else:
+            mkfs_args = [f"mkfs.{fstype}", f"/dev/{partition}"]
+        if label and fstype != "swap":
+            mkfs_args.extend(["-L", label])
+        r = subprocess.run(mkfs_args, capture_output=True, text=True, timeout=120)
         append_output(tid, r.stdout + r.stderr + "\n")
         update_task(tid, progress=100)
         append_output(tid, "Formatierung abgeschlossen.\n")
@@ -2318,7 +2474,7 @@ def get_secureboot_info():
             with open(f, "rb") as fh:
                 data = fh.read()
                 sb_state = "enabled" if data[-1] == 1 else "disabled"
-        except:
+        except Exception:
             pass
     info["state"] = sb_state
     info["setup_mode"] = "unknown"
@@ -2327,7 +2483,7 @@ def get_secureboot_info():
             with open(f, "rb") as fh:
                 data = fh.read()
                 info["setup_mode"] = "setup" if data[-1] == 1 else "user"
-        except:
+        except Exception:
             pass
 
     # MOK list
@@ -2472,16 +2628,14 @@ WIZARDS = {
 
 
 # ---- Notes ----
-
-NOTES_DIR = Path("/tmp/ittools/notes")
-NOTES_DIR.mkdir(parents=True, exist_ok=True)
+# NOTES_DIR already defined at top level using PERSIST_BASE
 
 def get_notes():
     notes = []
     for f in sorted(NOTES_DIR.glob("*.json")):
         try:
             notes.append(json.loads(f.read_text()))
-        except:
+        except Exception:
             pass
     return notes
 
@@ -2550,6 +2704,11 @@ CHECKLISTS = {
 }
 
 checklist_state = {}
+try:
+    if os.path.isfile(CHECKLISTS_FILE):
+        checklist_state = json.loads(Path(CHECKLISTS_FILE).read_text())
+except Exception:
+    pass
 
 def get_checklist(name):
     if name not in CHECKLISTS:
@@ -2563,6 +2722,10 @@ def update_checklist(name, item_index, checked):
     if name not in checklist_state:
         checklist_state[name] = {}
     checklist_state[name][str(item_index)] = checked
+    try:
+        Path(CHECKLISTS_FILE).write_text(json.dumps(checklist_state))
+    except Exception:
+        pass
 
 
 # ---- Terminal ----
@@ -2646,9 +2809,6 @@ def get_boot_device():
 
 # ---- Update System ----
 
-import hashlib
-import urllib.request
-
 def check_for_update():
     try:
         req = urllib.request.Request(f"{UPDATE_SERVER}/manifest.json", headers={"User-Agent": "flowbit-os"})
@@ -2656,7 +2816,7 @@ def check_for_update():
             manifest = json.loads(resp.read().decode())
         latest = manifest.get("latest", {})
         latest_ver = latest.get("version", "0.0.0")
-        update_available = latest_ver != FLOWBIT_VERSION
+        update_available = version_newer(FLOWBIT_VERSION, latest_ver)
         return {
             "current_version": FLOWBIT_VERSION,
             "latest_version": latest_ver,
@@ -2673,9 +2833,8 @@ def download_update(task_id, url, expected_sha256):
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "flowbit-os"})
         resp = urllib.request.urlopen(req, timeout=300)
-        total = int(resp.headers.get("Content-Length", 0))
-        with tasks_lock:
-            tasks[task_id]["total"] = total
+        total = safe_int(resp.headers.get("Content-Length", 0))
+        update_task(task_id, total=total)
         iso_path = "/tmp/flowbit-update.iso"
         sha = hashlib.sha256()
         downloaded = 0
@@ -2687,26 +2846,21 @@ def download_update(task_id, url, expected_sha256):
                 f.write(chunk)
                 sha.update(chunk)
                 downloaded += len(chunk)
-                with tasks_lock:
-                    tasks[task_id]["progress"] = downloaded
+                update_task(task_id, progress=downloaded)
         actual_sha = sha.hexdigest()
         if expected_sha256 and actual_sha != expected_sha256:
-            with tasks_lock:
-                tasks[task_id] = {"status": "error", "error": f"SHA256 mismatch: {actual_sha}"}
+            update_task(task_id, status="error", error=f"SHA256 mismatch: {actual_sha}")
             os.remove(iso_path)
         else:
-            with tasks_lock:
-                tasks[task_id] = {"status": "done", "sha256": actual_sha, "size": downloaded}
+            update_task(task_id, status="done", sha256=actual_sha, size=downloaded)
     except Exception as e:
-        with tasks_lock:
-            tasks[task_id] = {"status": "error", "error": str(e)}
+        update_task(task_id, status="error", error=str(e))
 
 def flash_update(task_id, iso_path, device):
     try:
         safe_dev = sanitize_device(device)
         size = os.path.getsize(iso_path)
-        with tasks_lock:
-            tasks[task_id] = {"status": "flashing", "progress": 0, "total": size}
+        update_task(task_id, status="flashing", progress=0, total=size)
 
         # Unmount all partitions on the target device before flashing
         parts_out = run_cmd(f"lsblk -nlo NAME /dev/{safe_dev} 2>/dev/null", "", timeout=5)
@@ -2714,44 +2868,34 @@ def flash_update(task_id, iso_path, device):
             part_name = part_line.strip()
             if part_name:
                 run_cmd(f"umount /dev/{part_name} 2>/dev/null", "", timeout=10)
-        # Also unmount archiso bootmnt if it's on this device
         run_cmd("umount /run/archiso/bootmnt 2>/dev/null", "", timeout=5)
 
-        # Flash with dd
-        cmd = f"dd if='{iso_path}' of=/dev/{safe_dev} bs=4M oflag=sync status=progress 2>&1"
+        # Flash with dd - use buffered line reading instead of byte-by-byte
         proc = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+            ["dd", f"if={iso_path}", f"of=/dev/{safe_dev}", "bs=4M", "oflag=sync", "status=progress"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-        buf = b""
+        update_task(task_id, process=proc)
         while True:
-            chunk = proc.stdout.read(1)
-            if not chunk:
+            line = proc.stderr.readline()
+            if not line and proc.poll() is not None:
                 break
-            if chunk == b"\r" or chunk == b"\n":
-                line = buf.decode(errors="replace").strip()
-                buf = b""
-                m = re.search(r'(\d+)\s+bytes', line)
+            if line:
+                text = line.decode(errors="replace").strip()
+                m = re.search(r'(\d+)\s+bytes', text)
                 if m:
                     bytes_written = int(m.group(1))
-                    with tasks_lock:
-                        tasks[task_id]["progress"] = bytes_written
-                        tasks[task_id]["total"] = size
-            else:
-                buf += chunk
+                    update_task(task_id, progress=bytes_written, total=size)
         proc.wait()
 
         if proc.returncode == 0:
-            # Sync to ensure all data is written
             run_cmd("sync", "", timeout=30)
-            with tasks_lock:
-                tasks[task_id] = {"status": "done", "sha256": "verified"}
+            update_task(task_id, status="done", sha256="verified")
             log_action("Update Flash Complete", f"device=/dev/{safe_dev}, size={size}")
         else:
-            with tasks_lock:
-                tasks[task_id] = {"status": "error", "error": f"Flash fehlgeschlagen (exit code {proc.returncode})"}
+            update_task(task_id, status="error", error=f"Flash fehlgeschlagen (exit code {proc.returncode})")
     except Exception as e:
-        with tasks_lock:
-            tasks[task_id] = {"status": "error", "error": str(e)}
+        update_task(task_id, status="error", error=str(e))
 
 
 # ---- Hardware Monitor functions ----
@@ -3025,14 +3169,14 @@ def full_hwtest_thread(tid):
                      capture_output=True, timeout=120)
         try:
             os.remove(fname_stress)
-        except:
+        except Exception:
             pass
         subprocess.run(["sync"], timeout=10)
 
         c2 = run_cmd(f"md5sum {fname} | cut -d' ' -f1", "", timeout=60)
         try:
             os.remove(fname)
-        except:
+        except Exception:
             pass
 
         if c1 and c1 == c2:
@@ -3075,14 +3219,14 @@ def full_hwtest_thread(tid):
                         p.kill()
                     failed = True
                     break
-            except:
+            except Exception:
                 pass
             time.sleep(5)
 
         for p in procs:
             try:
                 p.wait(timeout=5)
-            except:
+            except Exception:
                 p.kill()
 
         if not failed:
@@ -3138,7 +3282,25 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+    def _check_auth(self):
+        """Check auth token."""
+        path = urlparse(self.path).path
+        if not path.startswith("/api/") or path == "/api/auth/verify":
+            return True
+        token = self.headers.get("X-Auth-Token", "")
+        cookies = self.headers.get("Cookie", "")
+        cookie_token = ""
+        for part in cookies.split(";"):
+            part = part.strip()
+            if part.startswith("flowbit_auth="):
+                cookie_token = part.split("=", 1)[1]
+                break
+        return token == AUTH_TOKEN or cookie_token == AUTH_TOKEN
+
     def do_GET(self):
+        if not self._check_auth():
+            self.send_json({"success": False, "error": "Nicht autorisiert"}, 401)
+            return
         parsed = urlparse(self.path)
         path = parsed.path
 
@@ -3146,13 +3308,25 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_file("index.html")
         elif path == "/api/sysinfo":
             self.send_json(get_system_info())
+        elif path == "/api/tasks":
+            with tasks_lock:
+                task_list = []
+                for tid_key, t in tasks.items():
+                    tc = dict(t)
+                    tc.pop("process", None)
+                    task_list.append(tc)
+            self.send_json({"success": True, "tasks": task_list})
         elif path.startswith("/api/task/"):
-            tid = path.split("/")[-1]
+            parts_list = path.split("/")
+            if len(parts_list) >= 5 and parts_list[4] == "cancel":
+                self.send_json(cancel_task(parts_list[3]))
+                return
+            tid = parts_list[-1]
             t = get_task(tid)
             if t:
                 self.send_json(t)
             else:
-                self.send_json({"error": "Task not found"}, 404)
+                self.send_json({"success": False, "error": "Task not found"}, 404)
         elif path == "/api/bios/settings":
             self.send_json(get_bios_settings())
         elif path == "/api/bios/profiles":
@@ -3161,7 +3335,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             output = run_cmd("lsblk -J -o NAME,SIZE,ROTA,MODEL,SERIAL,TYPE,MOUNTPOINT,FSTYPE 2>/dev/null", "{}")
             try:
                 self.send_json(json.loads(output))
-            except:
+            except Exception:
                 self.send_json({"blockdevices": []})
         elif path == "/api/storage":
             mounts = []
@@ -3223,9 +3397,11 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "image/svg+xml")
             self.send_header("Cache-Control", "no-cache")
-            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
-            self.wfile.write(svg.encode())
+            try:
+                self.wfile.write(svg.encode())
+            except BrokenPipeError:
+                pass
         elif path == "/api/download":
             qs = parse_qs(parsed.query)
             file_path = qs.get("path", [None])[0]
@@ -3242,7 +3418,6 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Content-Type", "application/octet-stream")
                 self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
                 self.send_header("Content-Length", str(file_size))
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 with open(file_path, 'rb') as f:
                     while True:
@@ -3286,16 +3461,22 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/update/bootdev":
             self.send_json(get_boot_device())
         elif path == "/api/version":
-            self.send_json({"version": FLOWBIT_VERSION})
+            uptime_secs = int(time.time() - SERVER_START)
+            self.send_json({"success": True, "version": FLOWBIT_VERSION,
+                "uptime": uptime_secs,
+                "uptime_human": f"{uptime_secs // 3600}h {(uptime_secs % 3600) // 60}m"})
         elif path == "/api/update/check":
             self.send_json(check_for_update())
         elif path.startswith("/api/update/progress"):
             qs = parse_qs(urlparse(self.path).query)
             task_id = qs.get("id", [""])[0]
-            if task_id in tasks:
-                self.send_json(tasks[task_id])
-            else:
-                self.send_json({"error": "Task nicht gefunden"}, 404)
+            with tasks_lock:
+                if task_id in tasks:
+                    task_copy = dict(tasks[task_id])
+                    task_copy.pop("process", None)
+                    self.send_json(task_copy)
+                else:
+                    self.send_json({"success": False, "error": "Task nicht gefunden"}, 404)
 
         # ---- Wizard ----
         elif path == "/api/wizard/list":
@@ -3326,17 +3507,46 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
-        content_length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_length).decode() if content_length else "{}"
+        if not self._check_auth():
+            self.send_json({"success": False, "error": "Nicht autorisiert"}, 401)
+            return
+        content_length = safe_int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode() if content_length else ""
         try:
             data = json.loads(body) if body else {}
-        except:
-            data = {}
+        except (json.JSONDecodeError, ValueError):
+            self.send_json({"success": False, "error": "Invalid JSON"}, 400)
+            return
 
         path = urlparse(self.path).path
+        source_ip = self.client_address[0] if self.client_address else ""
+
+        # ---- Auth ----
+        if path == "/api/auth/verify":
+            pin = data.get("pin", "")
+            if pin == AUTH_TOKEN:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Set-Cookie", f"flowbit_auth={AUTH_TOKEN}; Path=/; HttpOnly; SameSite=Strict")
+                self.end_headers()
+                try:
+                    self.wfile.write(json.dumps({"success": True}).encode())
+                except BrokenPipeError:
+                    pass
+                return
+            else:
+                self.send_json({"success": False, "error": "Falscher PIN"}, 401)
+                return
+
+        # ---- Task Cancel ----
+        elif path.startswith("/api/task/") and path.endswith("/cancel"):
+            parts_list = path.split("/")
+            if len(parts_list) >= 4:
+                self.send_json(cancel_task(parts_list[3]))
+                return
 
         # ---- Network ----
-        if path == "/api/ping":
+        elif path == "/api/ping":
             target = data.get("target", "1.1.1.1")
             result = {"output": run_cmd(f"ping -c 4 -W 3 {shlex.quote(target)} 2>&1", "Fehler", timeout=20)}
             self.send_json(result)
@@ -3358,15 +3568,38 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 bps = float(r)
                 mbps = round(bps * 8 / 1_000_000, 2)
-            except:
+            except Exception:
                 mbps = 0
             self.send_json({"mbps": mbps, "size": size})
 
         elif path == "/api/portcheck":
             target = data.get("target", "")
-            port = data.get("port", 80)
-            r = run_cmd(f"timeout 3 bash -c 'echo >/dev/tcp/{shlex.quote(str(target))}/{shlex.quote(str(port))}' 2>&1", "CLOSED", timeout=5)
-            self.send_json({"open": "CLOSED" not in r and "error" not in r.lower()})
+            port = safe_int(data.get("port", 80), 80)
+            if not target:
+                self.send_json({"success": False, "error": "Target required"}, 400)
+                return
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(3)
+                result_code = s.connect_ex((target, port))
+                s.close()
+                if result_code == 0:
+                    diagnosis = "open"
+                elif result_code == 111:
+                    diagnosis = "connection_refused"
+                elif result_code == 113:
+                    diagnosis = "host_unreachable"
+                elif result_code == 110:
+                    diagnosis = "timeout"
+                else:
+                    diagnosis = f"error_code_{result_code}"
+                self.send_json({"success": True, "open": result_code == 0, "diagnosis": diagnosis, "target": target, "port": port})
+            except socket.gaierror:
+                self.send_json({"success": True, "open": False, "diagnosis": "dns_resolution_failed", "target": target, "port": port})
+            except socket.timeout:
+                self.send_json({"success": True, "open": False, "diagnosis": "timeout", "target": target, "port": port})
+            except Exception as e:
+                self.send_json({"success": False, "open": False, "error": str(e), "target": target, "port": port})
 
         elif path == "/api/network/diag":
             tid = new_task("Netzwerk Diagnose")
@@ -3384,7 +3617,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/wiper/wipe":
             device = data.get("device", "")
             method = data.get("method", "zero")
-            passes = int(data.get("passes", 1))
+            passes = safe_int(data.get("passes", 1), 1)
             if not device:
                 self.send_json({"error": "Kein Device angegeben"}, 400)
                 return
@@ -3412,14 +3645,14 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
         # ---- Hardware Test ----
         elif path == "/api/hwtest/ram":
-            size = int(data.get("size_mb", 256))
-            passes = int(data.get("passes", 2))
+            size = safe_int(data.get("size_mb", 256), 256)
+            passes = safe_int(data.get("passes", 2), 2)
             tid = new_task(f"RAM Test {size}MB")
             threading.Thread(target=ram_test_thread, args=(tid, size, passes), daemon=True).start()
             self.send_json({"task_id": tid})
 
         elif path == "/api/hwtest/cpu":
-            duration = int(data.get("duration", 30))
+            duration = safe_int(data.get("duration", 30), 30)
             tid = new_task(f"CPU Stress {duration}s")
             threading.Thread(target=cpu_stress_thread, args=(tid, duration), daemon=True).start()
             self.send_json({"task_id": tid})
@@ -3470,12 +3703,16 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             target_path = data.get("target_path", "/tmp")
             compress = data.get("compress", True)
             if not source:
-                self.send_json({"error": "Kein Source angegeben"}, 400)
+                self.send_json({"success": False, "error": "Kein Source angegeben"}, 400)
                 return
             safe_src = sanitize_device(source)
-            log_action("Backup", f"/dev/{safe_src} -> {target_path}")
+            safe_target = sanitize_path(target_path)
+            if not safe_target:
+                self.send_json({"success": False, "error": "Ungültiger Zielpfad"}, 400)
+                return
+            log_action("Backup", f"/dev/{safe_src} -> {safe_target}")
             tid = new_task(f"Backup /dev/{safe_src}")
-            threading.Thread(target=backup_disk_thread, args=(tid, safe_src, target_path, compress), daemon=True).start()
+            threading.Thread(target=backup_disk_thread, args=(tid, safe_src, safe_target, compress), daemon=True).start()
             self.send_json({"task_id": tid})
 
         elif path == "/api/backup/restore":
@@ -3617,7 +3854,6 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_header("Content-Type", "application/zip")
                     self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
                     self.send_header("Content-Length", str(file_size))
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     with open(zip_path, 'rb') as f:
                         while True:
@@ -3628,7 +3864,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                     # Cleanup
                     try:
                         os.remove(zip_path)
-                    except:
+                    except Exception:
                         pass
                 except Exception as e:
                     self.send_json({"error": str(e)}, 500)
@@ -3651,7 +3887,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/api/eventlog/read":
             evt_path = data.get("path", "")
-            count = int(data.get("count", 100))
+            count = safe_int(data.get("count", 100), 100)
             if not evt_path:
                 self.send_json({"error": "Path required"}, 400)
                 return
@@ -3832,7 +4068,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/wiper/certificate":
             device = data.get("device", "")
             method = data.get("method", "zero")
-            passes = int(data.get("passes", 1))
+            passes = safe_int(data.get("passes", 1), 1)
             verified = bool(data.get("verified", False))
             if not device:
                 self.send_json({"error": "device required"}, 400)
@@ -3950,26 +4186,34 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             url = data.get("url", "")
             sha256 = data.get("sha256", "")
             if not url:
-                self.send_json({"error": "url required"}, 400)
+                self.send_json({"success": False, "error": "url required"}, 400)
                 return
             task_id = str(uuid.uuid4())[:8]
-            tasks[task_id] = {"status": "downloading", "progress": 0, "total": 0}
-            log_action("Update Download", f"url={url}")
+            with tasks_lock:
+                tasks[task_id] = {"id": task_id, "description": "Update Download",
+                    "status": "downloading", "progress": 0, "total": 0,
+                    "output": "", "started": time.time(), "finished": None,
+                    "exit_code": None, "process": None}
+            log_action("Update Download", f"url={url}", self.client_address[0] if self.client_address else "")
             threading.Thread(target=download_update, args=(task_id, url, sha256), daemon=True).start()
             self.send_json({"task_id": task_id})
 
         elif path == "/api/update/flash":
             device = data.get("device", "")
-            if not device or not re.match(r'^/dev/(sd[a-z]|nvme\d+n\d+|sr\d+)$', device):
-                self.send_json({"error": "Ungültiges Gerät"}, 400)
+            if not device or not re.match(r'^(/dev/)?(sd[a-z]|nvme\d+n\d+|sr\d+)$', device):
+                self.send_json({"success": False, "error": "Ungültiges Gerät"}, 400)
                 return
             iso_path = "/tmp/flowbit-update.iso"
             if not os.path.exists(iso_path):
-                self.send_json({"error": "Kein Update heruntergeladen"}, 400)
+                self.send_json({"success": False, "error": "Kein Update heruntergeladen"}, 400)
                 return
             task_id = str(uuid.uuid4())[:8]
-            tasks[task_id] = {"status": "flashing", "progress": 0}
-            log_action("Update Flash", f"device={device}")
+            with tasks_lock:
+                tasks[task_id] = {"id": task_id, "description": "Update Flash",
+                    "status": "flashing", "progress": 0, "total": 0,
+                    "output": "", "started": time.time(), "finished": None,
+                    "exit_code": None, "process": None}
+            log_action("Update Flash", f"device={device}", self.client_address[0] if self.client_address else "")
             threading.Thread(target=flash_update, args=(task_id, iso_path, device), daemon=True).start()
             self.send_json({"task_id": task_id})
 
@@ -3979,17 +4223,21 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
     def do_OPTIONS(self):
         """Handle CORS preflight requests."""
         self.send_response(200)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self.headers.get("Origin", "")
+        self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Auth-Token")
+        self.send_header("Access-Control-Allow-Credentials", "true")
         self.end_headers()
 
     def send_json(self, data, status=200):
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode())
+        except BrokenPipeError:
+            pass
 
     def send_file(self, filename):
         filepath = STATIC_DIR / filename
@@ -4002,7 +4250,10 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 ct = "application/javascript"
             self.send_header("Content-Type", f"{ct}; charset=utf-8")
             self.end_headers()
-            self.wfile.write(filepath.read_bytes())
+            try:
+                self.wfile.write(filepath.read_bytes())
+            except BrokenPipeError:
+                pass
         else:
             self.send_error(404)
 
@@ -4012,7 +4263,8 @@ class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 
 if __name__ == "__main__":
-    print(f"flowbit OS Server starting on port {PORT}...")
+    print(f"flowbit OS Server v{FLOWBIT_VERSION} starting on port {PORT}...")
+    print(f"\n  Auth-PIN: {AUTH_TOKEN}\n")
     server = ThreadedHTTPServer(("0.0.0.0", PORT), ITToolsHandler)
     try:
         server.serve_forever()

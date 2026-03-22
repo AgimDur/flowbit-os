@@ -46,7 +46,7 @@ pct exec 114 -- bash -c "cat > ${REMOTE_DIR}/manifest.json <<EOF
     \"released\": \"${DATE}\",
     \"channel\": \"stable\",
     \"iso\": {
-      \"url\": \"http://${UPDATE_SERVER}/isos/${ISO_NAME}\",
+      \"url\": \"https://update.flowbit.ch/isos/${ISO_NAME}\",
       \"size_bytes\": ${SIZE},
       \"sha256\": \"${SHA256}\"
     },
@@ -61,4 +61,4 @@ pct exec 114 -- curl -s http://localhost/manifest.json | python3 -m json.tool
 
 echo ""
 echo "=== Update published successfully ==="
-echo "URL: http://${UPDATE_SERVER}/isos/${ISO_NAME}"
+echo "URL: https://update.flowbit.ch/isos/${ISO_NAME}"

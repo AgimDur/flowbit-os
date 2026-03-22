@@ -5,6 +5,7 @@
 # =============================================================================
 
 set -uo pipefail
+source /opt/kit/modules/common.sh 2>/dev/null
 
 # ─── Farben ───────────────────────────────────────────────────────────────────
 R='\033[1;31m'
@@ -342,9 +343,7 @@ export_report() {
 
     # USB suchen
     local usb_path=""
-    for mp in /mnt/usb* /mnt/*/  /run/media/*/*/; do
-        [[ -w "$mp" ]] && usb_path="$mp" && break
-    done
+    usb_path=$(find_usb_storage)
 
     if [[ -n "$usb_path" ]]; then
         cp "/tmp/$filename" "${usb_path}${filename}"
@@ -364,9 +363,7 @@ export_intune_csv() {
     } > "/tmp/$filename"
 
     local usb_path=""
-    for mp in /mnt/usb* /mnt/*/  /run/media/*/*/; do
-        [[ -w "$mp" ]] && usb_path="$mp" && break
-    done
+    usb_path=$(find_usb_storage)
 
     if [[ -n "$usb_path" ]]; then
         cp "/tmp/$filename" "${usb_path}${filename}"
@@ -400,10 +397,12 @@ sysinfo_menu() {
                 show_all_info
                 echo ""
                 export_report
+                log_session "SYSINFO: Report exportiert"
                 pause_key
                 ;;
             3)
                 export_intune_csv
+                log_session "SYSINFO: Intune CSV exportiert"
                 pause_key
                 ;;
             0) return ;;

@@ -11,7 +11,7 @@ YELLOW="\e[1;33m"
 DIM="\e[2m"
 RESET="\e[0m"
 
-KIT_VERSION="v1.0"
+KIT_VERSION=$(cat /etc/flowbit-release 2>/dev/null || echo "5.0.0")
 MODULES_DIR="/opt/kit/modules"
 
 clear_screen() {

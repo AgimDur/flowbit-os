@@ -151,11 +151,10 @@ for iface in $(ls /sys/class/net/ 2>/dev/null | grep -v lo); do
     ip link set "$iface" up 2>/dev/null
 done
 
-# Start everything
+
+# Network — only NetworkManager
 systemctl start NetworkManager 2>/dev/null
-systemctl start systemd-networkd 2>/dev/null
-dhcpcd 2>/dev/null &
-DHCP_PID=$!
+sleep 3
 
 # Wait for IP
 for i in $(seq 1 12); do
@@ -169,6 +168,28 @@ if [ -n "$IP" ]; then
     echo -e "${TEAL}${IP}${RESET}"
 else
     echo -e "${YELLOW}offline${RESET}"
+fi
+
+# Check for WiFi
+if nmcli device status 2>/dev/null | grep -q wifi; then
+    echo -e "${CYAN}WiFi verfuegbar. Konfiguration:${RESET}"
+    echo -e "  ${CYAN}[w]${RESET} WiFi verbinden"
+    echo -e "  ${CYAN}[Enter]${RESET} Ueberspringen"
+    read -rp "> " wifi_choice
+    if [[ "$wifi_choice" == "w" ]]; then
+        echo -e "${CYAN}Verfuegbare Netzwerke:${RESET}"
+        nmcli device wifi list 2>/dev/null
+        read -rp "SSID: " wifi_ssid
+        read -rsp "Passwort: " wifi_pass
+        echo
+        if nmcli device wifi connect "$wifi_ssid" password "$wifi_pass" 2>/dev/null; then
+            echo -e "${GREEN}Verbunden mit $wifi_ssid${RESET}"
+            IP=$(get_ip)
+        else
+            echo -e "${RED}Verbindung fehlgeschlagen${RESET}"
+        fi
+        sleep 1
+    fi
 fi
 
 # ========== MAIN MENU ==========

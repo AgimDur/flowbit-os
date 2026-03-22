@@ -5,6 +5,7 @@
 # =============================================================================
 
 set -uo pipefail
+source /opt/kit/modules/common.sh 2>/dev/null
 
 R='\033[1;31m'
 G='\033[1;32m'
@@ -88,9 +89,7 @@ save_report() {
     } > "/tmp/$filename"
 
     local usb_path=""
-    for mp in /mnt/usb* /mnt/*/  /run/media/*/*/; do
-        [[ -w "$mp" ]] && usb_path="$mp" && break
-    done
+    usb_path=$(find_usb_storage)
     if [[ -n "$usb_path" ]]; then
         cp "/tmp/$filename" "${usb_path}${filename}"
         echo -e "    ${G}[OK] Gespeichert: ${usb_path}${filename}${NC}"
@@ -364,9 +363,7 @@ do_dmi_export() {
     } > "/tmp/$filename"
 
     local usb_path=""
-    for mp in /mnt/usb* /mnt/*/  /run/media/*/*/; do
-        [[ -w "$mp" ]] && usb_path="$mp" && break
-    done
+    usb_path=$(find_usb_storage)
     if [[ -n "$usb_path" ]]; then
         mkdir -p "${usb_path}BIOS_Settings" 2>/dev/null
         cp "/tmp/$filename" "${usb_path}BIOS_Settings/${filename}"
@@ -399,9 +396,7 @@ save_settings_txt() {
     } > "/tmp/$filename"
 
     local usb_path=""
-    for mp in /mnt/usb* /mnt/*/  /run/media/*/*/; do
-        [[ -w "$mp" ]] && usb_path="$mp" && break
-    done
+    usb_path=$(find_usb_storage)
     if [[ -n "$usb_path" ]]; then
         mkdir -p "${usb_path}BIOS_Settings" 2>/dev/null
         cp "/tmp/$filename" "${usb_path}BIOS_Settings/${filename}"
@@ -461,6 +456,9 @@ save_as_profile() {
 do_apply_profile() {
     bios_header
     echo -e "    ${W}BIOS PROFIL LADEN & ANWENDEN${NC}"
+    echo ""
+    echo -e "    ${Y}Hinweis: BIOS-Schreibzugriff funktioniert nur auf Dell, Lenovo und einigen HP Systemen.${NC}"
+    echo -e "    ${Y}Auf anderen Herstellern wird der Befehl ohne Effekt ausgefuehrt.${NC}"
     echo ""
 
     if [[ -z "$FW_ATTR_PATH" ]]; then

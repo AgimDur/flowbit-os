@@ -1,0 +1,14 @@
+[Unit]
+Description=flowbit OS Web UI
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/kit/webui/server.py
+Restart=on-failure
+RestartSec=3
+WorkingDirectory=/opt/kit/webui
+
+[Install]
+WantedBy=multi-user.target

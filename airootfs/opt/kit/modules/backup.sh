@@ -5,6 +5,7 @@
 # =============================================================================
 
 set -uo pipefail
+source /opt/kit/modules/common.sh 2>/dev/null
 
 # ─── Farben ───────────────────────────────────────────────────────────────────
 R='\033[1;31m'
@@ -279,6 +280,7 @@ do_disk_backup() {
         local ssh_dir="${SSH_TARGET#*:}"
         if dd if="$source" bs=4M status=progress 2>/dev/null | zstd -3 -T0 | ssh "$ssh_host" "cat > ${ssh_dir}/${imgname}" 2>/dev/null; then
             result_ok "Backup via SSH abgeschlossen: ${imgname}"
+            log_session "BACKUP: Disk-Image via SSH erstellt: ${imgname}"
         else
             result_fail "Backup via SSH fehlgeschlagen"
         fi
@@ -287,6 +289,7 @@ do_disk_backup() {
         if dd if="$source" bs=4M status=progress 2>/dev/null | pv -s "$(blockdev --getsize64 "$source" 2>/dev/null || echo 0)" 2>/dev/null | zstd -3 -T0 > "$dest_file" 2>/dev/null; then
             local fsize=$(du -h "$dest_file" 2>/dev/null | awk '{print $1}')
             result_ok "Backup abgeschlossen: ${imgname} (${fsize})"
+            log_session "BACKUP: Disk-Image erstellt: ${imgname} (${fsize})"
 
             # Checksumme
             echo -e "    ${C}[...]  Erstelle Checksumme...${NC}"
@@ -445,6 +448,7 @@ do_disk_restore() {
     if $decomp < "$image_file" | dd of="$target" bs=4M status=progress 2>/dev/null; then
         sync
         result_ok "Restore abgeschlossen: $(basename "$image_file") -> $target"
+        log_session "RESTORE: Disk-Image wiederhergestellt: $(basename "$image_file") -> $target"
     else
         result_fail "Restore fehlgeschlagen"
     fi
@@ -494,6 +498,7 @@ do_disk_clone() {
     if dd if="$source" of="$target" bs=4M status=progress conv=fsync 2>/dev/null; then
         sync
         result_ok "Klon abgeschlossen: $source -> $target"
+        log_session "CLONE: Disk-Klon abgeschlossen: $source -> $target"
     else
         result_fail "Klon fehlgeschlagen"
     fi
@@ -607,6 +612,7 @@ do_file_backup() {
         local ssh_dir="${SSH_TARGET#*:}"
         if tar cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" 2>/dev/null | zstd -3 -T0 | ssh "$ssh_host" "cat > ${ssh_dir}/${archive_name}" 2>/dev/null; then
             result_ok "Datei-Backup via SSH abgeschlossen"
+            log_session "BACKUP: Datei-Backup via SSH erstellt"
         else
             result_fail "Datei-Backup via SSH fehlgeschlagen"
         fi
@@ -615,6 +621,7 @@ do_file_backup() {
         if tar cf - -C "$(dirname "$source_path")" "$(basename "$source_path")" 2>/dev/null | pv 2>/dev/null | zstd -3 -T0 > "$dest_file" 2>/dev/null; then
             local fsize=$(du -h "$dest_file" 2>/dev/null | awk '{print $1}')
             result_ok "Backup abgeschlossen: ${archive_name} (${fsize})"
+            log_session "BACKUP: Datei-Backup erstellt: ${archive_name} (${fsize})"
             sha256sum "$dest_file" > "${dest_file}.sha256" 2>/dev/null
             result_ok "SHA256 gespeichert"
         else
@@ -700,6 +707,7 @@ do_file_restore() {
 
     if $decomp < "$archive" | tar xf - -C "$restore_path" 2>/dev/null; then
         result_ok "Restore abgeschlossen: -> $restore_path"
+        log_session "RESTORE: Datei-Restore abgeschlossen: -> $restore_path"
     else
         result_fail "Restore fehlgeschlagen"
     fi

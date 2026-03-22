@@ -1,6 +1,6 @@
 [Unit]
 Description=flowbit OS Storage Setup
-After=local-fs.target
+After=local-fs.target systemd-udevd.service
 Before=multi-user.target
 
 [Service]

@@ -5,6 +5,7 @@
 # =============================================================================
 
 set -uo pipefail
+source /opt/kit/modules/common.sh 2>/dev/null
 
 # ─── Farben ───────────────────────────────────────────────────────────────────
 R='\033[1;31m'
@@ -69,9 +70,15 @@ method_label() {
 }
 
 get_disks() {
+    local boot_dev
+    boot_dev=$(lsblk -no PKNAME $(findmnt -n -o SOURCE /) 2>/dev/null | head -1)
     lsblk -d -n -o NAME,TYPE 2>/dev/null \
         | awk '$2=="disk"{print $1}' \
-        | grep -E "^(sd|nvme|hd|vd)"
+        | grep -E "^(sd|nvme|hd|vd)" \
+        | while read -r dev_name; do
+            [[ "$dev_name" == "$boot_dev" ]] && continue
+            echo "$dev_name"
+        done
 }
 
 disk_info_line() {
@@ -151,6 +158,8 @@ do_disk_wipe() {
 
     confirm_action "${SELECTED_DISKS[*]}" || { echo -e "    ${G}Abgebrochen.${NC}"; sleep 1; return; }
 
+    log_session "WIPE: ${SELECTED_DISKS[*]} mit Methode $(method_label) gestartet"
+
     echo ""
     local ok=0 fail=0
     for dev in "${SELECTED_DISKS[@]}"; do
@@ -191,6 +200,7 @@ do_disk_wipe() {
 
     echo ""
     echo -e "    ${G}Erfolgreich: ${ok}${NC}  ${R}Fehler: ${fail}${NC}"
+    log_session "WIPE: abgeschlossen — Erfolgreich: ${ok}, Fehler: ${fail}"
     pause_key
 }
 
@@ -217,6 +227,7 @@ do_partition_wipe() {
         wipefs -a /dev/"$dev" >> "$MAIN_LOG" 2>&1 || true
         echo -e "    ${G}[OK]   /dev/${dev} — Partitionstabelle entfernt${NC}"
         proto_add "PARTITION WIPE | /dev/${dev} | MBR+GPT entfernt"
+        log_session "PARTITION WIPE: /dev/${dev} MBR+GPT entfernt"
     done
     pause_key
 }
@@ -266,6 +277,7 @@ do_ssd_secure_erase() {
         if nvme format /dev/"$dev" -s 1 >> "$MAIN_LOG" 2>&1; then
             echo -e "    ${G}[OK]   NVMe Secure Erase abgeschlossen.${NC}"
             proto_add "SSD SECURE ERASE OK | /dev/${dev} | NVMe format"
+            log_session "SSD SECURE ERASE: /dev/${dev} NVMe OK"
         else
             echo -e "    ${R}[FAIL] NVMe Secure Erase fehlgeschlagen.${NC}"
             proto_add "SSD SECURE ERASE FEHLER | /dev/${dev} | NVMe"
@@ -300,6 +312,7 @@ do_ssd_secure_erase() {
         if $cmd WiperTmp /dev/"$dev" >> "$MAIN_LOG" 2>&1; then
             echo -e "    ${G}[OK]   ATA Secure Erase abgeschlossen.${NC}"
             proto_add "SSD SECURE ERASE OK | /dev/${dev} | ATA enhanced=$([[ "$etype" == "1" ]] && echo ja || echo nein)"
+            log_session "SSD SECURE ERASE: /dev/${dev} ATA OK"
         else
             echo -e "    ${R}[FAIL] ATA Secure Erase fehlgeschlagen.${NC}"
             proto_add "SSD SECURE ERASE FEHLER | /dev/${dev}"
@@ -499,9 +512,7 @@ do_protocol() {
 
             # USB suchen
             local usb_path=""
-            for mp in /mnt/usb* /mnt/*/  /run/media/*/*/; do
-                [[ -w "$mp" ]] && usb_path="$mp" && break
-            done
+            usb_path=$(find_usb_storage)
 
             if [[ -n "$usb_path" ]]; then
                 cp "/tmp/$outfile" "${usb_path}${outfile}"

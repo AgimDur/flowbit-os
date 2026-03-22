@@ -5,6 +5,7 @@
 # =============================================================================
 
 set -uo pipefail
+source /opt/kit/modules/common.sh 2>/dev/null
 
 # ─── Farben ───────────────────────────────────────────────────────────────────
 R='\033[1;31m'
@@ -187,6 +188,7 @@ do_ping() {
             result_fail "${label}: nicht erreichbar"
         fi
     done
+    log_session "NETWORK: Ping-Test durchgefuehrt"
 
     pause_key
 }
@@ -369,6 +371,17 @@ do_portcheck() {
 }
 
 # ─── [6] Speedtest ───────────────────────────────────────────────────────────
+run_speedtest() {
+    if command -v speedtest-cli &>/dev/null; then
+        echo -e "${C}Starte Speedtest...${NC}"
+        speedtest-cli --simple
+        return $?
+    else
+        echo -e "${Y}speedtest-cli nicht verfuegbar, verwende curl-basierte Messung${NC}"
+        return 1
+    fi
+}
+
 do_speedtest() {
     net_header
     echo -e "    ${W}SPEEDTEST${NC}"
@@ -376,6 +389,24 @@ do_speedtest() {
     REPORT_DATA=""
     report_add "  SPEEDTEST"
     report_add "  Datum: $(date '+%d.%m.%Y %H:%M:%S')"
+
+    # Try speedtest-cli first
+    if command -v speedtest-cli &>/dev/null; then
+        echo -e "    ${C}Verwende speedtest-cli...${NC}"
+        echo ""
+        local st_result
+        st_result=$(speedtest-cli --simple 2>&1)
+        if [[ $? -eq 0 ]]; then
+            echo "$st_result" | while IFS= read -r line; do
+                echo -e "    ${G}[OK]${NC}   $line"
+                report_add "  [OK]   $line"
+            done
+            log_session "NETWORK: Speedtest (speedtest-cli) abgeschlossen"
+            pause_key
+            return
+        fi
+        echo -e "    ${Y}speedtest-cli fehlgeschlagen, verwende curl-Fallback${NC}"
+    fi
 
     section_header "Download-Test"
 
@@ -447,6 +478,7 @@ do_speedtest() {
         local avg=$(echo "$ping_result" | awk -F'/' '{print $5}')
         result_ok "Latenz: ${avg}ms avg (1.1.1.1)"
     fi
+    log_session "NETWORK: Speedtest durchgefuehrt"
 
     pause_key
 }
@@ -485,6 +517,7 @@ do_discovery() {
         echo -e "    ${DIM}${line}${NC}"
         report_add "  $line"
     done
+    log_session "NETWORK: Discovery durchgefuehrt"
 
     pause_key
 }
@@ -578,7 +611,7 @@ do_full_diag() {
     echo -ne "    Auswahl: "
     read -r sel
 
-    [[ "$sel" == "1" ]] && save_report "NETZDIAG"
+    [[ "$sel" == "1" ]] && { save_report "NETZDIAG"; log_session "NETWORK: Komplett-Diagnose exportiert"; }
 
     pause_key
 }
@@ -591,9 +624,7 @@ save_report() {
     echo "$REPORT_DATA" > "/tmp/$filename"
 
     local usb_path=""
-    for mp in /mnt/usb* /mnt/*/  /run/media/*/*/; do
-        [[ -w "$mp" ]] && usb_path="$mp" && break
-    done
+    usb_path=$(find_usb_storage)
 
     if [[ -n "$usb_path" ]]; then
         cp "/tmp/$filename" "${usb_path}${filename}"
