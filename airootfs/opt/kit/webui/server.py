@@ -31,9 +31,9 @@ from urllib.parse import parse_qs, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PORT = 8080
-HTTP_PORT = 8081  # HTTP redirect port
+HTTPS_PORT = 8443  # HTTPS for remote access
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "6.2.1"
+FLOWBIT_VERSION = "6.2.2"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -1980,7 +1980,7 @@ def get_server_ip():
     ip = run_cmd("ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}'", "", timeout=3)
     if not ip:
         ip = run_cmd("hostname -I 2>/dev/null | awk '{print $1}'", "127.0.0.1", timeout=3)
-    return {"ip": ip, "port": PORT, "url": f"https://{ip}:{PORT}", "http_url": f"http://{ip}:{HTTP_PORT}"}
+    return {"ip": ip, "port": PORT, "url": f"http://{ip}:{PORT}", "https_url": f"https://{ip}:{HTTPS_PORT}"}
 
 
 def generate_qr_svg(text):
@@ -5607,7 +5607,7 @@ class RedirectHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(301)
         host = self.headers.get('Host', '').split(':')[0]
-        self.send_header('Location', f'https://{host}:{PORT}{self.path}')
+        self.send_header('Location', f'https://{host}:{HTTPS_PORT}{self.path}')
         self.end_headers()
 
     def do_POST(self):
@@ -5647,27 +5647,22 @@ if __name__ == "__main__":
     print(f"flowbit OS Server v{FLOWBIT_VERSION}")
     print(f"  Auth-PIN: {AUTH_TOKEN}")
 
-    # Generate HTTPS cert (D01)
-    cert_file, key_file = create_self_signed_cert()
-
-    # Start HTTPS server
+    # Start HTTP server on PORT (8080) — used by Chromium kiosk
     server = ThreadedHTTPServer(("0.0.0.0", PORT), ITToolsHandler)
+    print(f"  HTTP:  http://0.0.0.0:{PORT} (Kiosk + LAN)")
+
+    # Start HTTPS server on HTTPS_PORT (8443) — for remote access (D01)
+    cert_file, key_file = create_self_signed_cert()
     try:
+        https_server = ThreadedHTTPServer(("0.0.0.0", HTTPS_PORT), ITToolsHandler)
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.load_cert_chain(cert_file, key_file)
-        server.socket = ctx.wrap_socket(server.socket, server_side=True)
-        print(f"  HTTPS: https://0.0.0.0:{PORT}")
+        https_server.socket = ctx.wrap_socket(https_server.socket, server_side=True)
+        https_thread = threading.Thread(target=https_server.serve_forever, daemon=True)
+        https_thread.start()
+        print(f"  HTTPS: https://0.0.0.0:{HTTPS_PORT} (Remote)")
     except Exception as e:
-        print(f"  WARNUNG: HTTPS fehlgeschlagen ({e}), starte ohne SSL...")
-
-    # Start HTTP redirect server on port 8081 (D01)
-    try:
-        redirect_server = ThreadedHTTPServer(("0.0.0.0", HTTP_PORT), RedirectHandler)
-        redirect_thread = threading.Thread(target=redirect_server.serve_forever, daemon=True)
-        redirect_thread.start()
-        print(f"  HTTP redirect: http://0.0.0.0:{HTTP_PORT} -> https://0.0.0.0:{PORT}")
-    except Exception as e:
-        print(f"  HTTP redirect port {HTTP_PORT} nicht verfügbar: {e}")
+        print(f"  HTTPS auf Port {HTTPS_PORT} nicht verfügbar: {e}")
 
     # Start session cleanup thread (D02)
     threading.Thread(target=_session_cleanup_loop, daemon=True).start()

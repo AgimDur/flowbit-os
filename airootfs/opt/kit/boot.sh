@@ -134,7 +134,7 @@ start_gui() {
     else
         echo -e "${RED}    X11 fehlgeschlagen.${RESET}"
         IP=$(get_ip)
-        [ -n "$IP" ] && echo -e "${DIM}    Web-UI: http://${IP}:8080${RESET}"
+        [ -n "$IP" ] && echo -e "${DIM}    Web-UI: http://${IP}:8080 (HTTPS: https://${IP}:8443)${RESET}"
         read -n 1 -s -r -p "    Beliebige Taste..."
     fi
 }
