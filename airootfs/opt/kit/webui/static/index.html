@@ -604,6 +604,7 @@ body.light #shortcut-overlay .shortcut-panel { background:rgba(255,255,255,0.97)
 /* ---- BOTTOM PADDING for statusbar ---- */
 .app { padding-bottom: 40px; }
 </style>
+<meta name="google" content="notranslate">
 </head>
 <body>
 
@@ -622,7 +623,7 @@ body.light #shortcut-overlay .shortcut-panel { background:rgba(255,255,255,0.97)
       <span class="version-badge" id="header-version">v3.1.0</span>
       <button class="btn-ctrl" onclick="toggleLang()" id="lang-btn" title="Sprache">EN</button>
       <div class="notif-bell" style="position:relative">
-        <button class="btn-ctrl" onclick="toggleNotifPanel()" title="Benachrichtigungen" aria-label="Benachrichtigungen">&#128276;
+        <button class="btn-ctrl" onclick="toggleNotifPanel()" title="Benachrichtigungen" aria-label="Benachrichtigungen">🔔
           <span class="notif-badge" id="notif-badge"></span>
         </button>
         <div id="notif-panel">
@@ -633,15 +634,15 @@ body.light #shortcut-overlay .shortcut-panel { background:rgba(255,255,255,0.97)
           <div id="notif-list"><div class="notif-empty">Keine Benachrichtigungen</div></div>
         </div>
       </div>
-      <button class="btn-ctrl" onclick="toggleCmdPalette()" title="Befehlspalette (Ctrl+K)" aria-label="Befehlspalette">&#9655;</button>
-      <button class="btn-ctrl" onclick="toggleTheme()" id="theme-btn" title="Theme">&#9790;</button>
+      <button class="btn-ctrl" onclick="toggleCmdPalette()" title="Suche (Ctrl+K)" aria-label="Suche" style="font-size:13px;width:auto;padding:0 10px">🔍 Suche</button>
+      <button class="btn-ctrl" onclick="toggleTheme()" id="theme-btn" title="Theme wechseln">🌙</button>
       <button class="btn-ctrl" onclick="toggleSettings()" title="Einstellungen" style="font-size:20px;width:auto;padding:0 12px;gap:6px">&#9881; <span style="font-size:13px;font-family:var(--font-ui)">Settings</span></button>
       <div class="power-menu">
-        <button class="btn-ctrl power-btn" onclick="togglePowerMenu()" title="Power" style="font-size:16px;color:var(--danger)">&#9211;</button>
+        <button class="btn-ctrl power-btn" onclick="togglePowerMenu()" title="Power" style="font-size:14px;color:var(--danger);width:auto;padding:0 10px">⏻ Power</button>
         <div class="power-dropdown" id="power-dropdown">
-          <button class="power-item" onclick="doPower('shutdown')">&#9211; Herunterfahren</button>
-          <button class="power-item" onclick="doPower('reboot')">&#8635; Neustart</button>
-          <button class="power-item power-item-danger" onclick="doPower('reset')">&#9889; Hard Reset</button>
+          <button class="power-item" onclick="doPower('shutdown')">⏻ Herunterfahren</button>
+          <button class="power-item" onclick="doPower('reboot')">🔄 Neustart</button>
+          <button class="power-item power-item-danger" onclick="doPower('reset')">⚡ Hard Reset</button>
         </div>
       </div>
     </div>
@@ -724,7 +725,7 @@ body.light #shortcut-overlay .shortcut-panel { background:rgba(255,255,255,0.97)
     <div class="grid-4" id="dash-extras" style="margin-top:16px">
       <div class="stat-card" style="padding:12px">
         <div class="stat-label" style="font-size:11px">CPU Temperatur</div>
-        <div id="dash-temp-badge" style="margin-top:6px"><span class="badge badge-info">...</span></div>
+        <div id="dash-temp-badge" style="margin-top:6px"><span class="badge badge-info" style="font-size:14px">Lade...</span></div>
       </div>
       <div class="stat-card" style="padding:12px">
         <div class="stat-label" style="font-size:11px">Netzwerk-Info</div>
@@ -2045,7 +2046,7 @@ function updateDashboard() {
   const tempVal = parseFloat((s.cpu_temp||'0').replace(/[^0-9.]/g,'')) || 0;
   const tempEl = document.getElementById('dash-temp-badge');
   if (tempEl) {
-    if (tempVal > 0) {
+    if (tempVal > 0 && tempVal < 150) {  // Sanity check: ignore unrealistic temps
       const cls = tempVal >= 80 ? 'badge-danger' : tempVal >= 60 ? 'badge-warning' : 'badge-success';
       tempEl.innerHTML = `<span class="badge ${cls}" style="font-size:18px;padding:6px 14px">${escapeHtml(s.cpu_temp)}</span>`;
     } else {
