@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 PORT = 8080
 HTTP_PORT = 8081  # HTTP redirect port
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "6.1.0"
+FLOWBIT_VERSION = "6.2.0"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -3968,6 +3968,201 @@ def eject_usb_device(device):
     return {"success": success, "output": r}
 
 
+
+# ---- noVNC Remote Desktop Proxy (A01) ----
+vnc_proxy_process = None
+
+def start_vnc_proxy(host, port, password=None):
+    """Start websockify proxy to target VNC server."""
+    global vnc_proxy_process
+    # Kill existing proxy
+    if vnc_proxy_process and vnc_proxy_process.poll() is None:
+        vnc_proxy_process.terminate()
+        try:
+            vnc_proxy_process.wait(timeout=5)
+        except Exception:
+            vnc_proxy_process.kill()
+
+    safe_host = re.sub(r'[^a-zA-Z0-9.\-:]', '', host)
+    safe_port = safe_int(port, 5900)
+    proxy_port = 6080
+
+    # Start websockify
+    cmd = ["websockify", "--web", "/usr/share/novnc",
+           str(proxy_port), f"{safe_host}:{safe_port}"]
+    vnc_proxy_process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    time.sleep(1)
+
+    if vnc_proxy_process.poll() is not None:
+        stderr_out = ""
+        try:
+            stderr_out = vnc_proxy_process.stderr.read().decode()
+        except Exception:
+            pass
+        return {"success": False, "error": f"websockify konnte nicht gestartet werden: {stderr_out}"}
+
+    return {
+        "success": True,
+        "url": f"/vnc/vnc.html?host={safe_host}&port={proxy_port}&autoconnect=true",
+        "proxy_port": proxy_port
+    }
+
+def stop_vnc_proxy():
+    """Stop the running websockify VNC proxy."""
+    global vnc_proxy_process
+    if vnc_proxy_process and vnc_proxy_process.poll() is None:
+        vnc_proxy_process.terminate()
+        try:
+            vnc_proxy_process.wait(timeout=5)
+        except Exception:
+            vnc_proxy_process.kill()
+        vnc_proxy_process = None
+    return {"success": True}
+
+def vnc_status():
+    """Check if VNC proxy is running."""
+    running = vnc_proxy_process is not None and vnc_proxy_process.poll() is None
+    return {"running": running}
+
+
+# ---- Active Directory / LDAP Lookup (A04) ----
+def ldap_search(server, base_dn, user, password, search_filter, attributes=None):
+    """Search AD/LDAP using ldapsearch."""
+    safe_server = shlex.quote(server)
+    safe_dn = shlex.quote(base_dn)
+    safe_user = shlex.quote(user)
+    safe_pass = shlex.quote(password)
+    safe_filter = shlex.quote(search_filter)
+
+    attr_str = " ".join(shlex.quote(a) for a in attributes) if attributes else ""
+
+    cmd = (f"ldapsearch -x -H ldap://{safe_server} -b {safe_dn} "
+           f"-D {safe_user} -w {safe_pass} {safe_filter} {attr_str} 2>&1")
+
+    result = run_cmd(cmd, timeout=15)
+    if not result or "ldap_bind: Invalid credentials" in result:
+        return {"success": False, "error": result or "Keine Antwort"}
+
+    # Parse ldapsearch output into structured data
+    entries = []
+    current = {}
+    for line in result.split("\n"):
+        line = line.strip()
+        if line.startswith("dn: "):
+            if current:
+                entries.append(current)
+            current = {"dn": line[4:]}
+        elif ": " in line and current:
+            key, val = line.split(": ", 1)
+            if key in current:
+                if isinstance(current[key], list):
+                    current[key].append(val)
+                else:
+                    current[key] = [current[key], val]
+            else:
+                current[key] = val
+    if current:
+        entries.append(current)
+
+    return {"success": True, "entries": entries, "count": len(entries)}
+
+
+# ---- VPN Client / WireGuard (E-item) ----
+def vpn_connect(config_b64):
+    """Create WireGuard config and connect."""
+    config = base64.b64decode(config_b64).decode()
+    config_path = "/tmp/ittools/wg0.conf"
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, "w") as f:
+        f.write(config)
+    os.chmod(config_path, 0o600)
+
+    # Bring up WireGuard
+    r = run_cmd("wg-quick up /tmp/ittools/wg0.conf 2>&1", timeout=10)
+    success = "wg0" in (run_cmd("ip link show wg0 2>/dev/null", timeout=3) or "")
+    return {"success": success, "output": r}
+
+def vpn_disconnect():
+    """Disconnect WireGuard VPN."""
+    r = run_cmd("wg-quick down /tmp/ittools/wg0.conf 2>&1", timeout=10)
+    return {"success": True, "output": r}
+
+def vpn_status():
+    """Get WireGuard VPN status."""
+    wg = run_cmd("wg show all 2>/dev/null", timeout=5)
+    connected = bool(wg and "wg0" in wg)
+    result = {"connected": connected}
+    if connected:
+        result["details"] = wg
+        for line in wg.split("\n"):
+            if "endpoint:" in line:
+                result["endpoint"] = line.split(":")[-2].strip() + ":" + line.split(":")[-1].strip()
+            if "transfer:" in line:
+                result["transfer"] = line.split("transfer:")[-1].strip()
+            if "latest handshake:" in line:
+                result["handshake"] = line.split("handshake:")[-1].strip()
+    return result
+
+
+# ---- DNS Diagnostics (E-item) ----
+def dns_dig(domain, qtype="A", server=None):
+    """Run DNS dig query and parse results."""
+    safe_domain = shlex.quote(domain)
+    safe_type = shlex.quote(qtype)
+    server_part = f"@{shlex.quote(server)}" if server else ""
+    r = run_cmd(f"dig {server_part} {safe_domain} {safe_type} +noall +answer +stats 2>&1", timeout=10)
+    # Parse dig output
+    records = []
+    query_time = ""
+    for line in (r or "").split("\n"):
+        line = line.strip()
+        if line and not line.startswith(";"):
+            parts = line.split()
+            if len(parts) >= 5:
+                records.append({
+                    "name": parts[0], "ttl": parts[1],
+                    "class": parts[2], "type": parts[3],
+                    "value": " ".join(parts[4:])
+                })
+        if "Query time:" in line:
+            query_time = line
+    return {"records": records, "query_time": query_time, "raw": r}
+
+
+# ---- WiFi Hotspot (E-item) ----
+def start_hotspot(ssid, password, band="2.4"):
+    """Start WiFi hotspot using NetworkManager."""
+    band_flag = "a" if band == "5" else "bg"
+    cmd = f"nmcli device wifi hotspot ifname wlan0 ssid {shlex.quote(ssid)} password {shlex.quote(password)} band {band_flag} 2>&1"
+    r = run_cmd(cmd, timeout=10)
+    return {
+        "success": "successfully" in (r or "").lower() or "activated" in (r or "").lower(),
+        "output": r
+    }
+
+def stop_hotspot():
+    """Stop WiFi hotspot."""
+    r = run_cmd("nmcli connection down Hotspot 2>&1", timeout=10)
+    return {"success": True, "output": r}
+
+def hotspot_status():
+    """Get WiFi hotspot status."""
+    r = run_cmd("nmcli -t -f NAME,TYPE,DEVICE connection show --active 2>/dev/null", timeout=5)
+    active = False
+    details = {}
+    for line in (r or "").split("\n"):
+        parts = line.split(":")
+        if len(parts) >= 3 and "hotspot" in parts[1].lower():
+            active = True
+            details["name"] = parts[0]
+            details["device"] = parts[2]
+    if active:
+        # Get connected clients
+        clients = run_cmd("iw dev wlan0 station dump 2>/dev/null | grep -c Station", timeout=5)
+        details["clients"] = safe_int(clients, 0)
+    return {"active": active, "details": details}
+
+
 class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
     def __init__(self, *args, **kwargs):
@@ -4294,6 +4489,18 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             with sessions_lock:
                 count = len(sessions)
             self.send_json({"active_sessions": count})
+
+        # ---- noVNC Proxy Status (A01) ----
+        elif path == "/api/vnc/status":
+            self.send_json(vnc_status())
+
+        # ---- VPN Status (E-item) ----
+        elif path == "/api/vpn/status":
+            self.send_json(vpn_status())
+
+        # ---- Hotspot Status (E-item) ----
+        elif path == "/api/hotspot/status":
+            self.send_json(hotspot_status())
 
         else:
             super().do_GET()
@@ -5170,6 +5377,120 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 except Exception:
                     pass
             self.send_json({"success": True})
+
+        # ---- noVNC Remote Desktop Proxy (A01) ----
+        elif path == "/api/vnc/connect":
+            host = data.get("host", "")
+            port = data.get("port", 5900)
+            password = data.get("password")
+            if not host:
+                self.send_json({"error": "Host erforderlich"}, 400)
+            else:
+                log_action("VNC Connect", f"host={host}:{port}", source_ip)
+                self.send_json(start_vnc_proxy(host, port, password))
+
+        elif path == "/api/vnc/disconnect":
+            log_action("VNC Disconnect", "", source_ip)
+            self.send_json(stop_vnc_proxy())
+
+        # ---- Active Directory / LDAP (A04) ----
+        elif path == "/api/ldap/search":
+            server = data.get("server", "")
+            base_dn = data.get("base_dn", "")
+            user = data.get("user", "")
+            password = data.get("password", "")
+            search_filter = data.get("filter", "(objectClass=*)")
+            attributes = data.get("attributes")
+            if not server or not base_dn or not user or not password:
+                self.send_json({"error": "server, base_dn, user und password erforderlich"}, 400)
+            else:
+                log_action("LDAP Search", f"server={server} filter={search_filter}", source_ip)
+                self.send_json(ldap_search(server, base_dn, user, password, search_filter, attributes))
+
+        elif path == "/api/ldap/users":
+            server = data.get("server", "")
+            base_dn = data.get("base_dn", "")
+            user = data.get("user", "")
+            password = data.get("password", "")
+            search_name = data.get("name", "*")
+            if not server or not base_dn or not user or not password:
+                self.send_json({"error": "server, base_dn, user und password erforderlich"}, 400)
+            else:
+                log_action("LDAP Users", f"server={server} name={search_name}", source_ip)
+                self.send_json(ldap_search(server, base_dn, user, password,
+                    f"(&(objectClass=user)(objectCategory=person)(cn={search_name}))",
+                    ["cn", "sAMAccountName", "mail", "memberOf", "userAccountControl", "whenCreated", "lastLogon"]))
+
+        elif path == "/api/ldap/computers":
+            server = data.get("server", "")
+            base_dn = data.get("base_dn", "")
+            user = data.get("user", "")
+            password = data.get("password", "")
+            search_name = data.get("name", "*")
+            if not server or not base_dn or not user or not password:
+                self.send_json({"error": "server, base_dn, user und password erforderlich"}, 400)
+            else:
+                log_action("LDAP Computers", f"server={server} name={search_name}", source_ip)
+                self.send_json(ldap_search(server, base_dn, user, password,
+                    f"(&(objectClass=computer)(cn={search_name}))",
+                    ["cn", "dNSHostName", "operatingSystem", "operatingSystemVersion", "whenCreated", "lastLogonTimestamp"]))
+
+        elif path == "/api/ldap/groups":
+            server = data.get("server", "")
+            base_dn = data.get("base_dn", "")
+            user = data.get("user", "")
+            password = data.get("password", "")
+            search_name = data.get("name", "*")
+            if not server or not base_dn or not user or not password:
+                self.send_json({"error": "server, base_dn, user und password erforderlich"}, 400)
+            else:
+                log_action("LDAP Groups", f"server={server} name={search_name}", source_ip)
+                self.send_json(ldap_search(server, base_dn, user, password,
+                    f"(&(objectClass=group)(cn={search_name}))",
+                    ["cn", "description", "member", "groupType", "whenCreated"]))
+
+        # ---- VPN Client / WireGuard (E-item) ----
+        elif path == "/api/vpn/connect":
+            config_b64 = data.get("config", "")
+            if not config_b64:
+                self.send_json({"error": "WireGuard config (base64) erforderlich"}, 400)
+            else:
+                audit_record("vpn_connect", "WireGuard connect", source_ip)
+                log_action("VPN Connect", "", source_ip)
+                self.send_json(vpn_connect(config_b64))
+
+        elif path == "/api/vpn/disconnect":
+            audit_record("vpn_disconnect", "WireGuard disconnect", source_ip)
+            log_action("VPN Disconnect", "", source_ip)
+            self.send_json(vpn_disconnect())
+
+        # ---- DNS Diagnostics (E-item) ----
+        elif path == "/api/dns/dig":
+            domain = data.get("domain", "")
+            qtype = data.get("type", "A")
+            dns_server = data.get("server")
+            if not domain:
+                self.send_json({"error": "Domain erforderlich"}, 400)
+            else:
+                log_action("DNS Dig", f"domain={domain} type={qtype}", source_ip)
+                self.send_json(dns_dig(domain, qtype, dns_server))
+
+        # ---- WiFi Hotspot (E-item) ----
+        elif path == "/api/hotspot/start":
+            ssid = data.get("ssid", "")
+            password = data.get("password", "")
+            band = data.get("band", "2.4")
+            if not ssid or not password:
+                self.send_json({"error": "SSID und Passwort erforderlich"}, 400)
+            elif len(password) < 8:
+                self.send_json({"error": "Passwort muss mindestens 8 Zeichen haben"}, 400)
+            else:
+                log_action("Hotspot Start", f"ssid={ssid} band={band}", source_ip)
+                self.send_json(start_hotspot(ssid, password, band))
+
+        elif path == "/api/hotspot/stop":
+            log_action("Hotspot Stop", "", source_ip)
+            self.send_json(stop_hotspot())
 
         else:
             self.send_json({"error": "Unknown endpoint"}, 404)

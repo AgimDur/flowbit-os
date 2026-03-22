@@ -37,6 +37,8 @@ iproute2
 iputils
 net-tools
 bind
+openldap
+wireguard-tools
 ethtool
 openssh
 nmap

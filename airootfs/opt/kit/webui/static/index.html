@@ -1366,11 +1366,11 @@ body.light #shortcut-overlay .shortcut-panel { background:rgba(255,255,255,0.97)
       <div class="card-title">VNC Remote Desktop Test</div>
       <p style="color:var(--text-dim);font-size:12px;margin:8px 0">Prüft ob ein VNC-Server erreichbar ist.</p>
       <div class="input-group">
-        <input type="text" id="vnc-host" placeholder="Host/IP">
-        <input type="text" id="vnc-port" placeholder="Port" value="5900" style="max-width:80px">
+        <input type="text" id="vnctest-host" placeholder="Host/IP">
+        <input type="text" id="vnctest-port" placeholder="Port" value="5900" style="max-width:80px">
         <button class="btn btn-sm" onclick="testVnc()">Testen</button>
       </div>
-      <div id="vnc-result" style="font-size:13px;margin-top:8px"></div>
+      <div id="vnctest-result" style="font-size:13px;margin-top:8px"></div>
     </div>
   </div>
 
@@ -1518,6 +1518,108 @@ $ </div>
     </div>
   </div>
 
+  <!-- VNC REMOTE DESKTOP -->
+  <div class="page" id="page-vnc">
+    <div class="card" id="vnc-card">
+      <h3>Remote Desktop (VNC)</h3>
+      <p style="color:var(--text-dim);font-size:13px">Verbinde dich per VNC zu einem anderen Rechner im Netzwerk</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+        <input type="text" id="vnc-host" placeholder="Host / IP" style="flex:1;min-width:150px">
+        <input type="number" id="vnc-port" placeholder="Port" value="5900" style="width:80px">
+        <input type="password" id="vnc-pass" placeholder="VNC Passwort (optional)" style="flex:1;min-width:120px">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="connectVNC()">Verbinden</button>
+        <button class="btn btn-outline" onclick="disconnectVNC()" id="vnc-disconnect-btn" style="display:none">Trennen</button>
+      </div>
+      <div id="vnc-status" style="margin-top:8px;color:var(--text-dim)"></div>
+      <div id="vnc-frame-container" style="display:none;margin-top:12px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+        <iframe id="vnc-frame" style="width:100%;height:600px;border:none"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <!-- AD / LDAP BROWSER -->
+  <div class="page" id="page-ldap">
+    <div class="card">
+      <h3>Active Directory / LDAP</h3>
+      <p style="color:var(--text-dim);font-size:13px">AD-Benutzer, Computer und Gruppen abfragen (kein Domain-Join noetig)</p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+        <input type="text" id="ldap-server" placeholder="DC Server (z.B. dc01.firma.local)" style="flex:1;min-width:180px">
+        <input type="text" id="ldap-basedn" placeholder="Base DN (z.B. DC=firma,DC=local)" style="flex:1;min-width:180px">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+        <input type="text" id="ldap-user" placeholder="Benutzer (user@domain)" style="flex:1">
+        <input type="password" id="ldap-pass" placeholder="Passwort" style="flex:1">
+        <button class="btn" onclick="ldapConnect()">Verbinden</button>
+      </div>
+      <div id="ldap-status" style="margin:8px 0;color:var(--text-dim)"></div>
+      <div id="ldap-search-panel" style="display:none;border-top:1px solid var(--border);padding-top:12px;margin-top:12px">
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <button class="btn btn-sm" onclick="ldapQuery('users')">Benutzer</button>
+          <button class="btn btn-sm" onclick="ldapQuery('computers')">Computer</button>
+          <button class="btn btn-sm" onclick="ldapQuery('groups')">Gruppen</button>
+          <input type="text" id="ldap-filter" placeholder="LDAP Filter (optional)" style="flex:1">
+          <button class="btn btn-sm btn-outline" onclick="ldapCustomSearch()">Suchen</button>
+        </div>
+        <div id="ldap-results" style="max-height:400px;overflow-y:auto"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VPN WIREGUARD -->
+  <div class="page" id="page-vpn">
+    <div class="card">
+      <h3>VPN (WireGuard)</h3>
+      <div id="vpn-status-display" style="margin-bottom:10px"></div>
+      <div id="vpn-config-panel">
+        <textarea id="vpn-config" placeholder="WireGuard Config hier einfuegen ([Interface] / [Peer]...)" rows="8" style="width:100%;font-family:'JetBrains Mono',monospace;font-size:12px"></textarea>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn" onclick="vpnConnect()">Verbinden</button>
+          <label class="btn btn-outline" style="cursor:pointer">
+            Config laden <input type="file" accept=".conf" onchange="loadVPNConfig(this)" style="display:none">
+          </label>
+        </div>
+      </div>
+      <button class="btn btn-danger" id="vpn-disconnect-btn" onclick="vpnDisconnect()" style="display:none;margin-top:8px">VPN Trennen</button>
+    </div>
+  </div>
+
+  <!-- DNS DIAGNOSTICS -->
+  <div class="page" id="page-dnsquery">
+    <div class="card">
+      <h3>DNS Abfrage</h3>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+        <input type="text" id="dns-domain" placeholder="Domain (z.B. example.com)" style="flex:2;min-width:150px">
+        <select id="dns-type" style="width:80px">
+          <option>A</option><option>AAAA</option><option>MX</option><option>NS</option><option>TXT</option><option>SOA</option><option>CNAME</option><option>PTR</option><option>SRV</option>
+        </select>
+        <input type="text" id="dns-server" placeholder="DNS Server (optional)" style="flex:1;min-width:100px">
+        <button class="btn" onclick="doDNSLookup()">Abfragen</button>
+      </div>
+      <div id="dns-results"></div>
+    </div>
+  </div>
+
+  <!-- WIFI HOTSPOT -->
+  <div class="page" id="page-hotspot">
+    <div class="card">
+      <h3>WiFi Hotspot</h3>
+      <div id="hotspot-status" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+        <input type="text" id="hotspot-ssid" placeholder="SSID" value="flowbit-tools" style="flex:1">
+        <input type="password" id="hotspot-pass" placeholder="Passwort (min. 8 Zeichen)" style="flex:1">
+        <select id="hotspot-band" style="width:80px">
+          <option value="2.4">2.4 GHz</option>
+          <option value="5">5 GHz</option>
+        </select>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="startHotspot()">Hotspot starten</button>
+        <button class="btn btn-outline" onclick="stopHotspot()" id="hotspot-stop-btn" style="display:none">Stoppen</button>
+      </div>
+    </div>
+  </div>
   <div class="page" id="page-update">
     <div class="card">
       <div class="card-title">System-Update</div>
@@ -1686,7 +1788,7 @@ const i18n = {
     dashboard: 'Dashboard', sysinfo: 'System Info', wiper: 'Wiper', network: 'Netzwerk',
     disks: 'Datenträger', hwtest: 'Hardware Test', bios: 'BIOS Tools', backup: 'Backup/Restore',
     wifi: 'WiFi', explorer: 'Datei-Explorer', passreset: 'Passwort-Reset', eventlog: 'Event-Log', ssh: 'SSH', sessionlog: 'Log',
-    partmgr: 'Partitionen', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal', update: 'Update',
+    partmgr: 'Partitionen', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal', update: 'Update', vnc: 'VNC Desktop', ldap: 'AD/LDAP', vpn: 'VPN', dnsquery: 'DNS Abfrage', hotspot: 'Hotspot',
     export_txt: 'Export TXT', refresh: 'Aktualisieren', connect: 'Verbinden', scan: 'Scannen',
     start: 'Starten', cancel: 'Abbrechen', execute: 'Ausführen', search: 'Suchen',
     phone_access: 'Handy-Zugriff', modules: 'Module', confirmation: 'Bestätigung',
@@ -1696,7 +1798,7 @@ const i18n = {
     dashboard: 'Dashboard', sysinfo: 'System Info', wiper: 'Wiper', network: 'Network',
     disks: 'Disks', hwtest: 'Hardware Test', bios: 'BIOS Tools', backup: 'Backup/Restore',
     wifi: 'WiFi', explorer: 'File Explorer', passreset: 'Password Reset', eventlog: 'Event Log', ssh: 'SSH', sessionlog: 'Log',
-    partmgr: 'Partitions', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal', update: 'Update',
+    partmgr: 'Partitions', antivirus: 'Antivirus', registry: 'Registry', wizard: 'Wizard', terminal: 'Terminal', update: 'Update', vnc: 'VNC Desktop', ldap: 'AD/LDAP', vpn: 'VPN', dnsquery: 'DNS Query', hotspot: 'Hotspot',
     export_txt: 'Export TXT', refresh: 'Refresh', connect: 'Connect', scan: 'Scan',
     start: 'Start', cancel: 'Cancel', execute: 'Execute', search: 'Search',
     phone_access: 'Phone Access', modules: 'Modules', confirmation: 'Confirmation',
@@ -1735,7 +1837,10 @@ const navCategories = {
   ],
   network: [
     { id: 'network', label: 'Netzwerk' },
-    { id: 'wifi', label: 'WiFi' }
+    { id: 'wifi', label: 'WiFi' },
+    { id: 'vpn', label: 'VPN' },
+    { id: 'dnsquery', label: 'DNS Abfrage' },
+    { id: 'hotspot', label: 'Hotspot' }
   ],
   windows: [
     { id: 'explorer', label: 'Datei-Explorer' },
@@ -1744,8 +1849,10 @@ const navCategories = {
     { id: 'eventlog', label: 'Event-Log' }
   ],
   remote: [
+    { id: 'vnc', label: 'VNC Desktop' },
     { id: 'ssh', label: 'SSH Client' },
-    { id: 'terminal', label: 'Terminal' }
+    { id: 'terminal', label: 'Terminal' },
+    { id: 'ldap', label: 'AD/LDAP' }
   ],
   system: [
     { id: 'bios', label: 'BIOS / Firmware' },
@@ -2779,17 +2886,218 @@ async function checkBitlocker() {
 
 // ---- VNC TEST ----
 async function testVnc() {
-  const host = document.getElementById('vnc-host').value;
-  const port = document.getElementById('vnc-port').value;
+  const host = document.getElementById('vnctest-host').value;
+  const port = document.getElementById('vnctest-port').value;
   if (!host) return;
-  document.getElementById('vnc-result').innerHTML = '<div class="spinner"></div> Teste...';
+  document.getElementById('vnctest-result').innerHTML = '<div class="spinner"></div> Teste...';
   const r = await api('vnc/test', {host, port: parseInt(port)});
-  document.getElementById('vnc-result').innerHTML = r.reachable ?
+  document.getElementById('vnctest-result').innerHTML = r.reachable ?
     '<span style="color:var(--success)">VNC-Server erreichbar auf ' + escapeHtml(host) + ':' + escapeHtml(port) + '</span>' :
     '<span style="color:var(--danger)">VNC-Server nicht erreichbar</span>';
 }
 
 // ---- WINDOWS PRODUCT KEYS ----
+
+// ---- VNC REMOTE DESKTOP (noVNC) ----
+async function connectVNC() {
+    const host = document.getElementById('vnc-host').value;
+    const port = document.getElementById('vnc-port').value;
+    const pass = document.getElementById('vnc-pass').value;
+    if (!host) { showToast('Bitte Host angeben', 'error'); return; }
+    document.getElementById('vnc-status').textContent = 'Verbinde...';
+    const r = await api('vnc/connect', {host, port: parseInt(port), password: pass});
+    if (r.success) {
+        document.getElementById('vnc-status').innerHTML = '<span style="color:var(--accent)">&#10003; Verbunden</span>';
+        document.getElementById('vnc-frame-container').style.display = 'block';
+        document.getElementById('vnc-frame').src = r.url;
+        document.getElementById('vnc-disconnect-btn').style.display = 'inline-flex';
+        addNotification('VNC verbunden mit ' + escapeHtml(host), 'success');
+    } else {
+        document.getElementById('vnc-status').innerHTML = '<span style="color:#ff6b6b">&#10007; ' + escapeHtml(r.error || 'Fehler') + '</span>';
+    }
+}
+
+async function disconnectVNC() {
+    await api('vnc/disconnect');
+    document.getElementById('vnc-frame-container').style.display = 'none';
+    document.getElementById('vnc-frame').src = '';
+    document.getElementById('vnc-disconnect-btn').style.display = 'none';
+    document.getElementById('vnc-status').textContent = 'Getrennt';
+    addNotification('VNC getrennt', 'info');
+}
+
+// ---- AD / LDAP BROWSER ----
+async function ldapConnect() {
+    const server = document.getElementById('ldap-server').value;
+    const basedn = document.getElementById('ldap-basedn').value;
+    const user = document.getElementById('ldap-user').value;
+    const pass = document.getElementById('ldap-pass').value;
+    if (!server || !basedn) { showToast('Server und Base DN angeben', 'error'); return; }
+    document.getElementById('ldap-status').innerHTML = '<div class="spinner" style="display:inline-block;width:14px;height:14px"></div> Verbinde...';
+    const r = await api('ldap/connect', {server, base_dn: basedn, user, password: pass});
+    if (r.success) {
+        document.getElementById('ldap-status').innerHTML = '<span style="color:var(--accent)">&#10003; Verbunden mit ' + escapeHtml(server) + '</span>';
+        document.getElementById('ldap-search-panel').style.display = 'block';
+        addNotification('LDAP verbunden mit ' + escapeHtml(server), 'success');
+    } else {
+        document.getElementById('ldap-status').innerHTML = '<span style="color:#ff6b6b">&#10007; ' + escapeHtml(r.error || 'Verbindung fehlgeschlagen') + '</span>';
+    }
+}
+
+async function ldapQuery(type) {
+    const el = document.getElementById('ldap-results');
+    el.innerHTML = '<div class="spinner"></div> Suche ' + escapeHtml(type) + '...';
+    const r = await api('ldap/query', {type: type});
+    if (r.error) { el.innerHTML = '<span style="color:#ff6b6b">' + escapeHtml(r.error) + '</span>'; return; }
+    if (!r.results || !r.results.length) { el.innerHTML = '<span style="color:var(--text-dim)">Keine Ergebnisse</span>'; return; }
+    let html = '<table><thead><tr>';
+    const keys = Object.keys(r.results[0]);
+    keys.forEach(function(k) { html += '<th>' + escapeHtml(k) + '</th>'; });
+    html += '</tr></thead><tbody>';
+    r.results.forEach(function(item) {
+        html += '<tr>';
+        keys.forEach(function(k) { html += '<td style="font-size:12px">' + escapeHtml(String(item[k] || '')) + '</td>'; });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+async function ldapCustomSearch() {
+    const filter = document.getElementById('ldap-filter').value;
+    if (!filter) { showToast('LDAP Filter eingeben', 'error'); return; }
+    const el = document.getElementById('ldap-results');
+    el.innerHTML = '<div class="spinner"></div> Suche...';
+    const r = await api('ldap/query', {filter: filter});
+    if (r.error) { el.innerHTML = '<span style="color:#ff6b6b">' + escapeHtml(r.error) + '</span>'; return; }
+    if (!r.results || !r.results.length) { el.innerHTML = '<span style="color:var(--text-dim)">Keine Ergebnisse</span>'; return; }
+    let html = '<table><thead><tr>';
+    const keys = Object.keys(r.results[0]);
+    keys.forEach(function(k) { html += '<th>' + escapeHtml(k) + '</th>'; });
+    html += '</tr></thead><tbody>';
+    r.results.forEach(function(item) {
+        html += '<tr>';
+        keys.forEach(function(k) { html += '<td style="font-size:12px">' + escapeHtml(String(item[k] || '')) + '</td>'; });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    el.innerHTML = html;
+}
+
+// ---- VPN (WireGuard) ----
+async function vpnConnect() {
+    const config = document.getElementById('vpn-config').value;
+    if (!config.includes('[Interface]')) { showToast('Ungueltige WireGuard Config', 'error'); return; }
+    const configB64 = btoa(config);
+    const r = await api('vpn/connect', {config: configB64});
+    if (r.success) {
+        showToast('VPN verbunden', 'success');
+        document.getElementById('vpn-disconnect-btn').style.display = 'inline-flex';
+        loadVPNStatus();
+    } else {
+        showToast('VPN Fehler: ' + (r.output || r.error), 'error');
+    }
+}
+
+function loadVPNConfig(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) { document.getElementById('vpn-config').value = e.target.result; };
+    reader.readAsText(file);
+}
+
+async function vpnDisconnect() {
+    await api('vpn/disconnect');
+    document.getElementById('vpn-disconnect-btn').style.display = 'none';
+    showToast('VPN getrennt', 'info');
+    loadVPNStatus();
+}
+
+async function loadVPNStatus() {
+    const r = await api('vpn/status');
+    const el = document.getElementById('vpn-status-display');
+    if (r.connected) {
+        el.innerHTML = '<div style="padding:8px;background:rgba(0,212,170,0.1);border-radius:8px;border:1px solid var(--accent)">' +
+            '<strong style="color:var(--accent)">&#10003; VPN Verbunden</strong>' +
+            (r.endpoint ? '<br><span style="font-size:12px;color:var(--text-dim)">Endpoint: ' + escapeHtml(r.endpoint) + '</span>' : '') +
+            (r.transfer ? '<br><span style="font-size:12px;color:var(--text-dim)">Transfer: ' + escapeHtml(r.transfer) + '</span>' : '') +
+            (r.handshake ? '<br><span style="font-size:12px;color:var(--text-dim)">Handshake: ' + escapeHtml(r.handshake) + '</span>' : '') +
+            '</div>';
+        document.getElementById('vpn-disconnect-btn').style.display = 'inline-flex';
+    } else {
+        el.innerHTML = '<span style="color:var(--text-dim)">Nicht verbunden</span>';
+        document.getElementById('vpn-disconnect-btn').style.display = 'none';
+    }
+}
+
+// ---- DNS DIAGNOSTICS ----
+async function doDNSLookup() {
+    const domain = document.getElementById('dns-domain').value;
+    const type = document.getElementById('dns-type').value;
+    const server = document.getElementById('dns-server').value;
+    if (!domain) { showToast('Domain eingeben', 'error'); return; }
+    const el = document.getElementById('dns-results');
+    el.innerHTML = '<div class="spinner"></div> Abfrage...';
+    const r = await api('dns/lookup', {domain: domain, type: type, server: server || undefined});
+    if (r.error) { el.innerHTML = '<div class="terminal" style="min-height:60px"><span style="color:#ff6b6b">' + escapeHtml(r.error) + '</span></div>'; return; }
+    let html = '<div class="terminal" style="min-height:60px">';
+    if (r.command) html += '<div style="color:var(--accent);margin-bottom:8px">$ ' + escapeHtml(r.command) + '</div>';
+    if (r.records && r.records.length) {
+        html += '<table style="width:100%"><thead><tr><th>Name</th><th>Typ</th><th>TTL</th><th>Wert</th></tr></thead><tbody>';
+        r.records.forEach(function(rec) {
+            html += '<tr><td>' + escapeHtml(rec.name||'') + '</td><td><span class="badge badge-info">' + escapeHtml(rec.type||'') + '</span></td><td>' + escapeHtml(String(rec.ttl||'')) + '</td><td style="font-family:monospace;font-size:11px;word-break:break-all">' + escapeHtml(rec.value||'') + '</td></tr>';
+        });
+        html += '</tbody></table>';
+    } else if (r.output) {
+        html += '<pre style="white-space:pre-wrap">' + escapeHtml(r.output) + '</pre>';
+    } else {
+        html += '<span style="color:var(--text-dim)">Keine Ergebnisse</span>';
+    }
+    html += '</div>';
+    if (r.query_time) html += '<div style="font-size:11px;color:var(--text-dim);margin-top:4px">Antwortzeit: ' + escapeHtml(r.query_time) + '</div>';
+    el.innerHTML = html;
+}
+
+// ---- WIFI HOTSPOT ----
+async function startHotspot() {
+    const ssid = document.getElementById('hotspot-ssid').value;
+    const pass = document.getElementById('hotspot-pass').value;
+    const band = document.getElementById('hotspot-band').value;
+    if (!ssid) { showToast('SSID eingeben', 'error'); return; }
+    if (pass && pass.length < 8) { showToast('Passwort muss mindestens 8 Zeichen haben', 'error'); return; }
+    const r = await api('hotspot/start', {ssid: ssid, password: pass, band: band});
+    if (r.success) {
+        showToast('Hotspot gestartet: ' + escapeHtml(ssid), 'success');
+        document.getElementById('hotspot-stop-btn').style.display = 'inline-flex';
+        loadHotspotStatus();
+    } else {
+        showToast('Hotspot Fehler: ' + (r.error || 'unbekannt'), 'error');
+    }
+}
+
+async function stopHotspot() {
+    await api('hotspot/stop');
+    document.getElementById('hotspot-stop-btn').style.display = 'none';
+    document.getElementById('hotspot-status').innerHTML = '<span style="color:var(--text-dim)">Hotspot gestoppt</span>';
+    showToast('Hotspot gestoppt', 'info');
+}
+
+async function loadHotspotStatus() {
+    const r = await api('hotspot/status');
+    const el = document.getElementById('hotspot-status');
+    if (r.active) {
+        el.innerHTML = '<div style="padding:8px;background:rgba(0,212,170,0.1);border-radius:8px;border:1px solid var(--accent)">' +
+            '<strong style="color:var(--accent)">&#10003; Hotspot aktiv</strong>' +
+            (r.ssid ? '<br><span style="font-size:12px;color:var(--text-dim)">SSID: ' + escapeHtml(r.ssid) + '</span>' : '') +
+            (r.clients !== undefined ? '<br><span style="font-size:12px;color:var(--text-dim)">Clients: ' + r.clients + '</span>' : '') +
+            '</div>';
+        document.getElementById('hotspot-stop-btn').style.display = 'inline-flex';
+    } else {
+        el.innerHTML = '<span style="color:var(--text-dim)">Kein Hotspot aktiv</span>';
+    }
+}
+
 async function loadWinKeys() {
   const r = await api('winkeys', {});
   const card = document.getElementById('winkeys-card');
@@ -3809,6 +4117,11 @@ const commands = [
   {name: 'Sprache wechseln', action: () => toggleLang(), icon: '&#127760;', shortcut: 'L'},
   {name: 'Daten aktualisieren', action: () => { loadSysinfo(); toast('Daten aktualisiert','info',2000); }, icon: '&#128260;', shortcut: 'R'},
   {name: 'Tastenkürzel anzeigen', action: () => toggleShortcutOverlay(), icon: '&#9000;', shortcut: '?'},
+  {name: 'Remote Desktop (VNC)', action: () => { showCategory('remote'); showPage('vnc'); }, icon: '&#128421;', shortcut: ''},
+  {name: 'AD / LDAP Browser', action: () => { showCategory('remote'); showPage('ldap'); }, icon: '&#128100;', shortcut: ''},
+  {name: 'VPN (WireGuard)', action: () => { showCategory('network'); showPage('vpn'); }, icon: '&#128272;', shortcut: ''},
+  {name: 'DNS Abfrage', action: () => { showCategory('network'); showPage('dnsquery'); }, icon: '&#127760;', shortcut: ''},
+  {name: 'WiFi Hotspot', action: () => { showCategory('network'); showPage('hotspot'); }, icon: '&#128246;', shortcut: ''},
 ];
 
 let cmdSelectedIdx = 0;
@@ -4568,6 +4881,11 @@ const featureDescriptions = [
     {name: 'Geraete-Info kopieren', desc: 'Clipboard kopieren Hersteller Modell Seriennummer', action: function() { copyDeviceInfo(); }, icon: '&#128203;'},
     {name: 'Screenshot exportieren', desc: 'Screenshot Bild exportieren', action: function() { exportScreenshot(); }, icon: '&#128247;'},
     {name: 'Autopilot CSV', desc: 'Autopilot Hash Windows Intune Enroll', action: function() { exportAutopilot(); }, icon: '&#128196;'},
+    {name: 'VNC Remote Desktop', desc: 'VNC noVNC Remote Desktop Fernzugriff Bildschirm', action: function() { showCategory('remote'); showPage('vnc'); }, icon: '&#128421;'},
+    {name: 'Active Directory LDAP', desc: 'AD LDAP Benutzer Computer Gruppen Domain Controller', action: function() { showCategory('remote'); showPage('ldap'); }, icon: '&#128100;'},
+    {name: 'VPN WireGuard', desc: 'VPN WireGuard Tunnel Verschluesselung', action: function() { showCategory('network'); showPage('vpn'); }, icon: '&#128272;'},
+    {name: 'DNS Abfrage erweitert', desc: 'DNS dig nslookup MX TXT AAAA SOA CNAME SRV', action: function() { showCategory('network'); showPage('dnsquery'); }, icon: '&#127760;'},
+    {name: 'WiFi Hotspot', desc: 'Hotspot Access Point WLAN teilen', action: function() { showCategory('network'); showPage('hotspot'); }, icon: '&#128246;'},
 ];
 
 // ============================================================
