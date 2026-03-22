@@ -585,6 +585,24 @@ body.light #shortcut-overlay .shortcut-panel { background:rgba(255,255,255,0.97)
 /* Main content padding for status bar */
 .app { padding-bottom: 36px !important; }
 
+
+/* ---- PINNED CARDS (B01) ---- */
+#pinned-area { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+#pinned-area:empty { display:none; }
+.pinned-card { position:relative; flex:1; min-width:280px; max-width:50%; }
+.pinned-card .pin-btn { display:none; }
+.pin-btn { background:none; border:1px solid var(--border); border-radius:4px; color:var(--text-dim); cursor:pointer; font-size:12px; padding:2px 6px; margin-left:8px; transition:all 0.15s; }
+.pin-btn:hover { color:var(--accent); border-color:var(--accent); }
+
+/* ---- TASK OVERVIEW (B04) ---- */
+#task-overview { display:none; position:fixed; bottom:36px; right:16px; width:320px; max-height:400px; overflow-y:auto; background:var(--bg-card); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border:1px solid var(--border); border-radius:12px; padding:12px; z-index:200; box-shadow:0 8px 32px rgba(0,0,0,0.3); }
+.task-ov-item { display:flex; align-items:center; gap:8px; padding:8px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:12px; }
+.task-ov-item:last-child { border-bottom:none; }
+.task-ov-progress { flex:1; height:4px; background:var(--bg-input); border-radius:2px; overflow:hidden; }
+.task-ov-fill { height:100%; background:linear-gradient(90deg,var(--accent),#06b6d4); border-radius:2px; transition:width 0.5s; }
+
+/* ---- BOTTOM PADDING for statusbar ---- */
+.app { padding-bottom: 40px; }
 </style>
 </head>
 <body>
@@ -692,6 +710,8 @@ body.light #shortcut-overlay .shortcut-panel { background:rgba(255,255,255,0.97)
   <div class="nav-sub" id="nav-sub">
     <!-- Sub-items populated by JS based on active category -->
   </div>
+
+  <div id="pinned-area"></div>
 
   <!-- DASHBOARD -->
   <div class="page active" id="page-dashboard">
@@ -981,6 +1001,50 @@ body.light #shortcut-overlay .shortcut-panel { background:rgba(255,255,255,0.97)
         <button class="btn btn-sm" onclick="startBenchmark()" aria-label="Benchmark starten">Benchmark starten</button>
       </div>
       <div id="bench-results" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom:4px">Netzwerk-Image</h3>
+      <p style="color:var(--text-dim);font-size:13px;margin-bottom:10px">Disk-Images auf SMB/NFS-Shares erstellen und wiederherstellen</p>
+      <div id="netimg-connect">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+          <select id="netimg-type" style="width:80px;flex:none" onchange="document.getElementById('netimg-auth').style.display=this.value==='nfs'?'none':'flex'">
+            <option value="smb">SMB</option>
+            <option value="nfs">NFS</option>
+          </select>
+          <input type="text" id="netimg-server" placeholder="Server (z.B. 192.168.1.100)" style="flex:1;min-width:150px">
+          <input type="text" id="netimg-share" placeholder="Share-Name" style="flex:1;min-width:120px">
+        </div>
+        <div id="netimg-auth" style="display:flex;gap:8px;margin:10px 0">
+          <input type="text" id="netimg-user" placeholder="Benutzer (optional)">
+          <input type="password" id="netimg-pass" placeholder="Passwort">
+        </div>
+        <button class="btn" onclick="connectNetShare()">Verbinden</button>
+        <span id="netimg-status" style="margin-left:10px;color:var(--text-dim)"></span>
+      </div>
+      <div id="netimg-actions" style="display:none;margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+        <div style="display:flex;gap:16px;flex-wrap:wrap">
+          <div style="flex:1;min-width:200px">
+            <h4 style="margin-bottom:8px">Backup erstellen</h4>
+            <select id="netimg-backup-disk"></select>
+            <label style="display:flex;align-items:center;gap:6px;margin:8px 0;font-size:13px">
+              <input type="checkbox" id="netimg-compress" checked> Komprimieren (zstd)
+            </label>
+            <button class="btn" onclick="confirm2('Netzwerk-Backup','Disk-Image wird auf den Netzwerk-Share geschrieben. Fortfahren?', startNetBackup, 'Backup starten')">Backup starten</button>
+            <div id="netimg-backup-task"></div>
+          </div>
+          <div style="flex:1;min-width:200px">
+            <h4 style="margin-bottom:8px">Image wiederherstellen</h4>
+            <div style="display:flex;gap:4px;align-items:center">
+              <select id="netimg-images" style="flex:1"><option disabled>Lade Images...</option></select>
+              <button class="btn btn-sm btn-outline" onclick="loadNetImages()" style="flex:none">&#8635;</button>
+            </div>
+            <select id="netimg-restore-disk" style="margin-top:8px"></select>
+            <button class="btn btn-danger" onclick="confirm2('Netzwerk-Restore','ACHTUNG: Alle Daten auf der Ziel-Disk werden ueberschrieben!', startNetRestore, 'Wiederherstellen')" style="margin-top:8px">Wiederherstellen</button>
+            <div id="netimg-restore-task"></div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="card">
       <div class="card-title">SMART Details</div>
@@ -1520,6 +1584,7 @@ $ </div>
     <input type="password" id="auth-pin" placeholder="PIN" maxlength="8" style="text-align:center;font-size:24px;letter-spacing:8px;width:100%;padding:14px;margin-bottom:16px" onkeydown="if(event.key==='Enter')doAuth()">
     <button class="btn" onclick="doAuth()" style="width:100%;padding:12px">Anmelden</button>
     <p id="auth-error" style="color:var(--danger);font-size:12px;margin-top:12px;display:none">Falscher PIN</p>
+    <p id="auth-https-note" style="color:var(--text-dim);font-size:11px;margin-top:16px;display:none">Bei HTTPS: Selbstsigniertes Zertifikat im Browser akzeptieren.</p>
   </div>
 </div>
 
@@ -1566,10 +1631,18 @@ $ </div>
   <span class="sb-item" id="sb-cpu"><span class="sb-dot green"></span> CPU: --</span>
   <span class="sb-item" id="sb-ram">RAM: --</span>
   <span class="sb-item" id="sb-net"><span class="sb-dot green"></span> Netz: --</span>
-  <span class="sb-item" id="sb-tasks">Tasks: 0</span>
+  <span class="sb-item" id="sb-tasks" style="cursor:pointer" onclick="toggleTaskOverview()">Tasks: 0</span>
   <span style="flex:1"></span>
   <span class="sb-item" id="sb-uptime">Uptime: --</span>
   <span class="sb-item" id="sb-version">flowbit OS</span>
+</div>
+
+<div id="task-overview">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <strong style="font-size:13px">Laufende Tasks</strong>
+        <button class="btn btn-sm btn-outline" onclick="document.getElementById('task-overview').style.display='none'" aria-label="Schliessen" style="padding:2px 8px">&#10005;</button>
+    </div>
+    <div id="task-overview-list"><div style="color:var(--text-dim);font-size:12px;text-align:center;padding:12px">Keine laufenden Tasks</div></div>
 </div>
 
 <div class="toast-container" id="toast-container" aria-live="polite" role="status"></div>
@@ -3652,6 +3725,7 @@ async function doAuth() {
     localStorage.setItem('authToken', data.token);
     document.getElementById('auth-overlay').style.display = 'none';
     loadSysinfo();
+    try { connectSSE(); } catch(e) { console.warn('SSE not available after auth'); }
   } else {
     document.getElementById('auth-error').style.display = 'block';
     document.getElementById('auth-pin').value = '';
@@ -3762,7 +3836,15 @@ function closeCmdPalette() {
 
 function filterCommands(query) {
   const q = query.toLowerCase();
-  const filtered = commands.filter(c => c.name.toLowerCase().includes(q));
+  // Search in main commands
+  let filtered = commands.filter(c => c.name.toLowerCase().includes(q));
+  // Also search in feature descriptions (enhanced search)
+  if (typeof featureDescriptions !== 'undefined') {
+    const extra = featureDescriptions.filter(function(f) {
+      return (f.name.toLowerCase().includes(q) || (f.desc && f.desc.toLowerCase().includes(q))) && !filtered.some(function(c) { return c.name === f.name; });
+    });
+    filtered = filtered.concat(extra);
+  }
   cmdSelectedIdx = 0;
   renderCmdResults(filtered);
 }
@@ -4237,10 +4319,291 @@ loadSysinfo = async function() {
   populateBenchDisks();
 };
 
+
+
+// ============================================================
+// SSE CLIENT (replaces polling for sysinfo)
+// ============================================================
+let eventSource = null;
+
+function connectSSE() {
+    if (eventSource) eventSource.close();
+    const token = localStorage.getItem('authToken');
+    eventSource = new EventSource('/api/events' + (token ? '?token=' + token : ''));
+
+    eventSource.addEventListener('task_update', (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            const taskEl = document.querySelector('[data-task-id="' + data.id + '"]');
+            if (taskEl) updateTaskElement(taskEl, data);
+            updateStatusBarTasks();
+            updateTaskOverview();
+        } catch(err) { console.warn('SSE task_update parse error', err); }
+    });
+
+    eventSource.addEventListener('sysinfo', (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            sysinfo = data;
+            updateDashboard();
+            updateStatusBar();
+        } catch(err) { console.warn('SSE sysinfo parse error', err); }
+    });
+
+    eventSource.addEventListener('audit', (e) => {
+        try {
+            const data = JSON.parse(e.data);
+            addNotification('Audit: ' + (data.action || 'unbekannt'), 'info');
+        } catch(err) { console.warn('SSE audit parse error', err); }
+    });
+
+    eventSource.onerror = () => {
+        console.warn('SSE connection lost, reconnecting in 5s...');
+        setTimeout(connectSSE, 5000);
+    };
+
+    eventSource.onopen = () => {
+        console.log('SSE connected');
+    };
+}
+
+function updateTaskElement(el, data) {
+    const pf = el.querySelector('.progress-fill');
+    const pp = el.querySelector('.progress-text span:first-child');
+    if (pf && data.progress !== undefined) pf.style.width = data.progress + '%';
+    if (pp && data.progress !== undefined) pp.textContent = data.progress + '%';
+    if (data.status === 'done' || data.status === 'error' || data.status === 'cancelled') {
+        const statusEl = el.querySelector('.task-status');
+        if (statusEl) {
+            if (data.status === 'done' && data.exit_code === 0) {
+                statusEl.className = 'task-status task-done';
+                statusEl.innerHTML = 'Abgeschlossen';
+            } else if (data.status === 'cancelled') {
+                statusEl.className = 'task-status task-error';
+                statusEl.innerHTML = 'Abgebrochen';
+            } else {
+                statusEl.className = 'task-status task-error';
+                statusEl.innerHTML = 'Fehler';
+            }
+        }
+    }
+}
+
+// ============================================================
+// NETWORK IMAGE (SMB/NFS Backup/Restore)
+// ============================================================
+async function connectNetShare() {
+    const type = document.getElementById('netimg-type').value;
+    const server = document.getElementById('netimg-server').value;
+    const share = document.getElementById('netimg-share').value;
+    const user = document.getElementById('netimg-user').value;
+    const pass = document.getElementById('netimg-pass').value;
+
+    if (!server || !share) { toast('Server und Share-Name eingeben', 'warning'); return; }
+
+    document.getElementById('netimg-status').textContent = 'Verbinde...';
+    const r = await api('netimage/mount', {type, server, share, user, password: pass});
+    if (r.success) {
+        document.getElementById('netimg-status').innerHTML = '<span style="color:var(--accent)">&#10003; Verbunden</span>';
+        document.getElementById('netimg-actions').style.display = 'block';
+        populateNetImageDisks();
+        loadNetImages();
+    } else {
+        document.getElementById('netimg-status').innerHTML = '<span style="color:#ff6b6b">&#10007; ' + escapeHtml(r.error || r.output || 'Fehler') + '</span>';
+    }
+}
+
+async function startNetBackup() {
+    const disk = document.getElementById('netimg-backup-disk').value;
+    const compress = document.getElementById('netimg-compress').checked;
+    const r = await api('netimage/backup', {disk, mountpoint: '/mnt/netshare', compress});
+    if (r.task_id) renderTaskUI('netimg-backup-task', r.task_id);
+    else toast(r.error || 'Fehler', 'error');
+}
+
+async function loadNetImages() {
+    const r = await api('netimage/list', {mountpoint: '/mnt/netshare'});
+    const sel = document.getElementById('netimg-images');
+    sel.innerHTML = '';
+    if (r.images && r.images.length) {
+        r.images.forEach(function(img) {
+            sel.innerHTML += '<option value="' + escapeAttr(img.path) + '">' + escapeHtml(img.name) + ' (' + escapeHtml(img.size) + ')</option>';
+        });
+    } else {
+        sel.innerHTML = '<option disabled>Keine Images gefunden</option>';
+    }
+}
+
+async function startNetRestore() {
+    const image = document.getElementById('netimg-images').value;
+    const disk = document.getElementById('netimg-restore-disk').value;
+    if (!image || !disk) { toast('Image und Ziel-Disk waehlen', 'warning'); return; }
+    const r = await api('netimage/restore', {image_path: image, target_disk: disk});
+    if (r.task_id) renderTaskUI('netimg-restore-task', r.task_id);
+    else toast(r.error || 'Fehler', 'error');
+}
+
+function populateNetImageDisks() {
+    const disks = sysinfo.disks || [];
+    ['netimg-backup-disk', 'netimg-restore-disk'].forEach(function(id) {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        sel.innerHTML = '';
+        disks.forEach(function(d) {
+            if (!d.is_boot) sel.innerHTML += '<option value="' + escapeAttr(d.name) + '">' + escapeHtml(d.name) + ' - ' + escapeHtml(d.size) + ' ' + escapeHtml(d.model || '') + '</option>';
+        });
+    });
+}
+
+// ============================================================
+// PINNED CARDS (B01 - Multi-Tab lite)
+// ============================================================
+function pinCard(cardEl) {
+    const clone = cardEl.cloneNode(true);
+    clone.classList.add('pinned-card');
+    // Remove pin buttons from clone
+    clone.querySelectorAll('.pin-btn').forEach(function(b) { b.remove(); });
+    // Add unpin button
+    const unpin = document.createElement('button');
+    unpin.className = 'btn btn-sm btn-outline';
+    unpin.innerHTML = '&#10005;';
+    unpin.style.cssText = 'position:absolute;top:8px;right:8px;padding:2px 8px;z-index:5';
+    unpin.onclick = function() { clone.remove(); };
+    clone.style.position = 'relative';
+    clone.appendChild(unpin);
+    document.getElementById('pinned-area').appendChild(clone);
+    toast('Card angepinnt', 'info', 2000);
+}
+
+// Add pin buttons to cards when hovering (via delegation)
+document.addEventListener('mouseover', function(e) {
+    const card = e.target.closest('.card');
+    if (!card || card.closest('#pinned-area') || card.querySelector('.pin-btn')) return;
+    const btn = document.createElement('button');
+    btn.className = 'pin-btn';
+    btn.innerHTML = '&#128204;';
+    btn.title = 'Card anpinnen';
+    btn.onclick = function(ev) { ev.stopPropagation(); pinCard(card); };
+    const header = card.querySelector('.card-header') || card.querySelector('.card-title');
+    if (header && header.parentElement === card) {
+        header.style.display = 'flex';
+        header.style.alignItems = 'center';
+        header.appendChild(btn);
+    }
+});
+document.addEventListener('mouseout', function(e) {
+    const card = e.target.closest('.card');
+    if (card && !card.closest('#pinned-area')) {
+        const btn = card.querySelector('.pin-btn');
+        // Only remove if mouse truly left the card
+        if (btn && !card.contains(e.relatedTarget)) btn.remove();
+    }
+});
+
+// ============================================================
+// TASK OVERVIEW (floating panel)
+// ============================================================
+let taskOverviewInterval = null;
+
+function toggleTaskOverview() {
+    const panel = document.getElementById('task-overview');
+    if (panel.style.display === 'block') {
+        panel.style.display = 'none';
+        if (taskOverviewInterval) { clearInterval(taskOverviewInterval); taskOverviewInterval = null; }
+    } else {
+        panel.style.display = 'block';
+        updateTaskOverview();
+        if (!taskOverviewInterval) taskOverviewInterval = setInterval(updateTaskOverview, 2000);
+    }
+}
+
+async function updateTaskOverview() {
+    try {
+        const r = await api('tasks');
+        const list = document.getElementById('task-overview-list');
+        if (!list) return;
+        const tasks = r.tasks || [];
+        const running = tasks.filter(function(t) { return t.status === 'running'; });
+        activeTasks = running.length;
+        const taskEl = document.getElementById('sb-tasks');
+        if (taskEl) taskEl.textContent = 'Tasks: ' + activeTasks;
+
+        if (!running.length) {
+            list.innerHTML = '<div style="color:var(--text-dim);font-size:12px;text-align:center;padding:12px">Keine laufenden Tasks</div>';
+            return;
+        }
+        list.innerHTML = running.map(function(t) {
+            return '<div class="task-ov-item" data-task-id="' + escapeAttr(t.id) + '">' +
+                '<div style="flex:1;min-width:0">' +
+                '<div style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + escapeHtml(t.command || t.type || t.id) + '</div>' +
+                '<div class="task-ov-progress"><div class="task-ov-fill" style="width:' + (t.progress || 0) + '%"></div></div>' +
+                '</div>' +
+                '<span style="color:var(--accent);font-family:var(--font-display)">' + (t.progress || 0) + '%</span>' +
+                '</div>';
+        }).join('');
+    } catch(e) { /* silently fail */ }
+}
+
+function updateStatusBarTasks() {
+    updateTaskOverview();
+}
+
+// ============================================================
+// ENHANCED COMMAND PALETTE (Search across feature descriptions)
+// ============================================================
+const featureDescriptions = [
+    {name: 'Netzwerk-Image Backup', desc: 'SMB NFS Share Disk-Image erstellen wiederherstellen', action: function() { showCategory('diagnose'); showPage('disks'); setTimeout(function(){var e=document.getElementById('netimg-connect');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#128190;'},
+    {name: 'Kabel-Test', desc: 'Netzwerk-Kabel Link Qualitaet Geschwindigkeit Duplex Paketverlust', action: function() { showCategory('network'); showPage('network'); setTimeout(function(){var e=document.getElementById('cable-iface');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#128268;'},
+    {name: 'Laufende Tasks anzeigen', desc: 'Tasks Progress Fortschritt uebersicht', action: function() { toggleTaskOverview(); }, icon: '&#9881;'},
+    {name: 'Multi-Clone', desc: 'Disk klonen mehrere parallel', action: function() { showCategory('storage'); showPage('backup'); setTimeout(function(){var e=document.getElementById('mclone-source');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#128190;'},
+    {name: 'USB-Boot-Stick', desc: 'ISO USB Stick bootfaehig schreiben', action: function() { showCategory('storage'); showPage('backup'); setTimeout(function(){var e=document.getElementById('usbwrite-iso');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#128190;'},
+    {name: 'Bitlocker pruefen', desc: 'Verschluesselung Bitlocker Status', action: function() { showCategory('diagnose'); showPage('disks'); setTimeout(function(){var e=document.getElementById('bitlocker-partition');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#128274;'},
+    {name: 'Wake-on-LAN', desc: 'WOL Magic Packet Geraet aufwecken', action: function() { showCategory('network'); showPage('network'); setTimeout(function(){var e=document.getElementById('wol-mac');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#128268;'},
+    {name: 'Firmware Updates', desc: 'fwupd Firmware BIOS Update', action: function() { showCategory('system'); showPage('bios'); setTimeout(function(){var e=document.getElementById('firmware-devices');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#9881;'},
+    {name: 'Boot Repair', desc: 'GRUB EFI BCD reparieren Boot', action: function() { showCategory('system'); showPage('bios'); setTimeout(function(){var e=document.getElementById('bootrepair-device');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#128295;'},
+    {name: 'Netzwerk Diagnose', desc: 'Ping DNS Traceroute Portcheck Speedtest', action: function() { showCategory('network'); showPage('network'); }, icon: '&#128269;'},
+    {name: 'QR-Code Handy-Zugriff', desc: 'Handy Mobile QR Code Zugriff', action: function() { loadQrCode(); document.getElementById('qr-modal').style.display='flex'; }, icon: '&#128241;'},
+    {name: 'Checklisten', desc: 'Checkliste To-Do Aufgaben', action: function() { showCategory('system'); showPage('wizard'); }, icon: '&#9745;'},
+    {name: 'Notizen', desc: 'Notiz schreiben speichern', action: function() { showCategory('dashboard'); setTimeout(function(){var e=document.getElementById('notes-list');if(e)e.scrollIntoView({behavior:'smooth'});},300); }, icon: '&#128221;'},
+    {name: 'Geraete-Info kopieren', desc: 'Clipboard kopieren Hersteller Modell Seriennummer', action: function() { copyDeviceInfo(); }, icon: '&#128203;'},
+    {name: 'Screenshot exportieren', desc: 'Screenshot Bild exportieren', action: function() { exportScreenshot(); }, icon: '&#128247;'},
+    {name: 'Autopilot CSV', desc: 'Autopilot Hash Windows Intune Enroll', action: function() { exportAutopilot(); }, icon: '&#128196;'},
+];
+
+// ============================================================
+// DARK/LIGHT AUTO-DETECTION (B-item)
+// ============================================================
+(function() {
+    // Auto-detect on first visit
+    if (!localStorage.getItem('theme')) {
+        if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+            document.body.classList.add('light');
+            var btn = document.getElementById('theme-btn');
+            if (btn) btn.innerHTML = '&#9728;&#65039;';
+        }
+    }
+    // Listen for OS theme changes
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', function(e) {
+        if (!localStorage.getItem('theme')) {
+            document.body.classList.toggle('light', e.matches);
+            var btn = document.getElementById('theme-btn');
+            if (btn) btn.innerHTML = e.matches ? '&#9728;&#65039;' : '&#127769;';
+        }
+    });
+    // Show HTTPS note if on HTTPS
+    if (window.location.protocol === 'https:') {
+        var note = document.getElementById('auth-https-note');
+        if (note) note.style.display = 'block';
+    }
+})();
+
+
 // Init
 checkAuth();
 loadSysinfo();
-setInterval(() => { if (currentPage === 'dashboard') loadSysinfo(); }, 30000);
+// Try SSE for real-time updates, fallback to polling
+try { connectSSE(); } catch(e) { console.warn('SSE not available, using polling fallback'); }
+setInterval(() => { if (!eventSource || eventSource.readyState === 2) { if (currentPage === 'dashboard') loadSysinfo(); } }, 30000);
 // Server IP is used internally by other features
 initUpdateCheck();
 fetch('/api/version').then(r=>r.json()).then(r=>{

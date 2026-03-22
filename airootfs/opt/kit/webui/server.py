@@ -15,6 +15,7 @@ import re
 import glob as globmod
 import shlex
 import struct
+import ssl
 import socket
 import zipfile
 import base64
@@ -30,8 +31,9 @@ from urllib.parse import parse_qs, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PORT = 8080
+HTTP_PORT = 8081  # HTTP redirect port
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "6.0.0"
+FLOWBIT_VERSION = "6.1.0"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -62,6 +64,15 @@ TASK_MAX_AGE = 3600
 
 # Session token auth
 AUTH_TOKEN = secrets.token_hex(3)  # 6 char hex
+
+# Session management (D02)
+sessions = {}  # {token: {created: time, last_seen: time, ip: str}}
+SESSION_TIMEOUT = 3600  # 1 hour
+sessions_lock = threading.Lock()
+
+# SSE clients for real-time updates (C02)
+sse_clients = {}
+sse_clients_lock = threading.Lock()
 
 # Server uptime tracking
 SERVER_START = time.time()
@@ -95,6 +106,11 @@ except Exception:
 request_counter = {"total": 0, "get": 0, "post": 0}
 request_counter_lock = threading.Lock()
 
+# Request logging with rotation (C06)
+request_log = deque(maxlen=1000)
+request_log_lock = threading.Lock()
+_request_count = 0
+
 
 def audit_record(action, details="", source_ip="", user="system"):
     """Record a destructive operation to the audit log."""
@@ -114,6 +130,10 @@ def audit_record(action, details="", source_ip="", user="system"):
                 json.dump(list(audit_log), f)
         except Exception:
             pass
+    try:
+        sse_broadcast("audit", entry)
+    except Exception:
+        pass
     return entry
 
 
@@ -152,14 +172,15 @@ def cleanup_old_tasks():
             del tasks[tid]
 
 
-def new_task(description=""):
+def new_task(description="", priority="normal"):
     cleanup_old_tasks()
     tid = str(uuid.uuid4())[:8]
     with tasks_lock:
         tasks[tid] = {
             "id": tid, "description": description, "status": "running",
             "progress": 0, "output": "", "started": time.time(),
-            "finished": None, "exit_code": None, "process": None
+            "finished": None, "exit_code": None, "process": None,
+            "priority": priority
         }
     return tid
 
@@ -183,6 +204,10 @@ def finish_task(tid, exit_code=0):
             tasks[tid]["progress"] = 100
             tasks[tid]["exit_code"] = exit_code
             tasks[tid]["finished"] = time.time()
+    try:
+        sse_broadcast("task_update", {"id": tid, "status": "done", "exit_code": exit_code})
+    except Exception:
+        pass
 
 
 def get_task(tid):
@@ -1954,7 +1979,7 @@ def get_server_ip():
     ip = run_cmd("ip -4 route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}'", "", timeout=3)
     if not ip:
         ip = run_cmd("hostname -I 2>/dev/null | awk '{print $1}'", "127.0.0.1", timeout=3)
-    return {"ip": ip, "port": PORT, "url": f"http://{ip}:{PORT}"}
+    return {"ip": ip, "port": PORT, "url": f"https://{ip}:{PORT}", "http_url": f"http://{ip}:{HTTP_PORT}"}
 
 
 def generate_qr_svg(text):
@@ -3313,6 +3338,239 @@ def full_hwtest_thread(tid):
 
 
 
+
+# ---- HTTPS Self-Signed Certificate (D01) ----
+
+def create_self_signed_cert():
+    """Generate self-signed cert if not exists."""
+    cert_dir = "/tmp/ittools/ssl"
+    cert_file = os.path.join(cert_dir, "server.crt")
+    key_file = os.path.join(cert_dir, "server.key")
+    if os.path.exists(cert_file) and os.path.exists(key_file):
+        return cert_file, key_file
+    os.makedirs(cert_dir, exist_ok=True)
+    cmd = (f'openssl req -x509 -newkey rsa:2048 -keyout {key_file} '
+           f'-out {cert_file} -days 365 -nodes '
+           f'-subj "/CN=flowbit-os/O=flowbit/C=CH"')
+    subprocess.run(cmd, shell=True, capture_output=True)
+    return cert_file, key_file
+
+
+# ---- Session Management (D02) ----
+
+def create_session(ip):
+    """Create a new session and return its token."""
+    token = secrets.token_hex(16)
+    with sessions_lock:
+        sessions[token] = {"created": time.time(), "last_seen": time.time(), "ip": ip}
+    return token
+
+
+def validate_session(token):
+    """Validate a session token. Returns True if valid, False otherwise."""
+    with sessions_lock:
+        s = sessions.get(token)
+        if not s:
+            return False
+        if time.time() - s["last_seen"] > SESSION_TIMEOUT:
+            del sessions[token]
+            return False
+        s["last_seen"] = time.time()
+        return True
+
+
+def cleanup_sessions():
+    """Remove expired sessions."""
+    now = time.time()
+    with sessions_lock:
+        expired = [t for t, s in sessions.items() if now - s["last_seen"] > SESSION_TIMEOUT]
+        for t in expired:
+            del sessions[t]
+
+
+# ---- SSE Server-Sent Events (C02) ----
+
+def sse_broadcast(event, data):
+    """Send event to all connected SSE clients."""
+    msg = f"event: {event}\ndata: {json.dumps(data)}\n\n".encode()
+    dead = []
+    with sse_clients_lock:
+        for cid, client in sse_clients.items():
+            try:
+                client.wfile.write(msg)
+                client.wfile.flush()
+            except Exception:
+                dead.append(cid)
+        for cid in dead:
+            sse_clients.pop(cid, None)
+
+
+# ---- Request Logging (C06) ----
+
+def log_request(method, path, status, duration_ms, ip):
+    """Log a request with structured data."""
+    global _request_count
+    with request_log_lock:
+        _request_count += 1
+        entry = {
+            "id": _request_count,
+            "time": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "method": method,
+            "path": path,
+            "status": status,
+            "duration_ms": round(duration_ms, 1),
+            "ip": ip
+        }
+        request_log.append(entry)
+
+
+# ---- Network Image / Disk Imaging on Network Shares (A03) ----
+
+def mount_network_share(share_type, server, share, user=None, password=None, mountpoint="/mnt/netshare"):
+    """Mount a SMB or NFS network share."""
+    os.makedirs(mountpoint, exist_ok=True)
+    if share_type == "smb":
+        cred_part = f"username={shlex.quote(user)},password={shlex.quote(password)}" if user else "guest"
+        cmd = f"mount -t cifs //{shlex.quote(server)}/{shlex.quote(share)} {mountpoint} -o {cred_part},vers=3.0"
+    elif share_type == "nfs":
+        cmd = f"mount -t nfs {shlex.quote(server)}:{shlex.quote(share)} {mountpoint}"
+    else:
+        return {"error": "Unbekannter Typ. Erlaubt: smb, nfs"}
+    r = run_cmd(cmd, timeout=15)
+    return {"success": os.path.ismount(mountpoint), "mountpoint": mountpoint, "output": r}
+
+
+def unmount_network_share(mountpoint="/mnt/netshare"):
+    """Unmount a network share."""
+    if not os.path.ismount(mountpoint):
+        return {"success": True, "message": "Nicht gemountet"}
+    r = subprocess.run(["umount", mountpoint], capture_output=True, text=True, timeout=15)
+    return {"success": r.returncode == 0, "output": r.stdout + r.stderr}
+
+
+def netimage_backup_thread(tid, disk, mountpoint, compress=True):
+    """Create a disk image to a network share."""
+    try:
+        safe_disk = sanitize_device(disk)
+        if not os.path.ismount(mountpoint):
+            append_output(tid, f"Fehler: {mountpoint} ist nicht gemountet.\n")
+            finish_task(tid, 1)
+            return
+        total_bytes = int(run_cmd(f"blockdev --getsize64 /dev/{safe_disk}", "0"))
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        hostname = run_cmd("hostname", "flowbit")
+        if compress:
+            dest = os.path.join(mountpoint, f"flowbit-image-{safe_disk}-{hostname}-{timestamp}.img.zst")
+            cmd = f"dd if=/dev/{safe_disk} bs=4M status=progress 2>&1 | zstd -1 -o {shlex.quote(dest)}"
+        else:
+            dest = os.path.join(mountpoint, f"flowbit-image-{safe_disk}-{hostname}-{timestamp}.img")
+            cmd = f"dd if=/dev/{safe_disk} of={shlex.quote(dest)} bs=4M status=progress conv=fsync 2>&1"
+
+        append_output(tid, f"Network Image Backup: /dev/{safe_disk} -> {dest}\n")
+        append_output(tid, f"Grösse: {total_bytes} Bytes\n\n")
+
+        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        update_task(tid, process=proc)
+        while True:
+            line = proc.stdout.readline()
+            if not line and proc.poll() is not None:
+                break
+            if line:
+                text = line.decode(errors="replace").strip()
+                m = re.search(r'(\d+)\s+bytes', text)
+                if m and total_bytes:
+                    pct = int(int(m.group(1)) / total_bytes * 95)
+                    update_task(tid, progress=min(pct, 95))
+                append_output(tid, text + "\n")
+
+        # Checksum
+        append_output(tid, "\nBerechne SHA256 Checksumme...\n")
+        update_task(tid, progress=96)
+        sha = run_cmd(f"sha256sum {shlex.quote(dest)} | cut -d' ' -f1", "N/A", timeout=600)
+        sha_file = dest + ".sha256"
+        try:
+            Path(sha_file).write_text(f"{sha}  {os.path.basename(dest)}\n")
+        except Exception:
+            pass
+        append_output(tid, f"SHA256: {sha}\n")
+        append_output(tid, f"\nNetwork Image Backup abgeschlossen: {dest}\n")
+        sse_broadcast("task_update", {"id": tid, "status": "done"})
+        finish_task(tid, proc.returncode or 0)
+    except Exception as e:
+        append_output(tid, f"\nFehler: {str(e)}\n")
+        finish_task(tid, 1)
+
+
+def netimage_restore_thread(tid, image_path, target_device):
+    """Restore a disk image from a network share."""
+    try:
+        safe_dev = sanitize_device(target_device)
+        if not os.path.isfile(image_path):
+            append_output(tid, f"Fehler: Image nicht gefunden: {image_path}\n")
+            finish_task(tid, 1)
+            return
+
+        append_output(tid, f"Network Image Restore: {image_path} -> /dev/{safe_dev}\n")
+
+        # Check SHA256 if available
+        sha_file = image_path + ".sha256"
+        if os.path.exists(sha_file):
+            append_output(tid, "Prüfe SHA256 Checksumme...\n")
+            update_task(tid, progress=5)
+            expected = Path(sha_file).read_text().split()[0]
+            actual = run_cmd(f"sha256sum {shlex.quote(image_path)} | cut -d' ' -f1", "", timeout=600)
+            if expected == actual:
+                append_output(tid, f"Checksumme OK: {actual}\n\n")
+            else:
+                append_output(tid, f"WARNUNG: Checksumme stimmt nicht überein!\n  Erwartet: {expected}\n  Erhalten: {actual}\n\n")
+
+        safe_image = shlex.quote(image_path)
+        safe_target_dev = shlex.quote(f"/dev/{safe_dev}")
+        if image_path.endswith(".zst"):
+            cmd = f"zstd -d -c {safe_image} | dd of={safe_target_dev} bs=4M status=progress conv=fsync 2>&1"
+        else:
+            cmd = f"dd if={safe_image} of={safe_target_dev} bs=4M status=progress conv=fsync 2>&1"
+
+        update_task(tid, progress=10)
+        proc = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        update_task(tid, process=proc)
+        while True:
+            line = proc.stdout.readline()
+            if not line and proc.poll() is not None:
+                break
+            if line:
+                text = line.decode(errors="replace").strip()
+                append_output(tid, text + "\n")
+
+        append_output(tid, "\nNetwork Image Restore abgeschlossen.\n")
+        sse_broadcast("task_update", {"id": tid, "status": "done"})
+        finish_task(tid, proc.returncode or 0)
+    except Exception as e:
+        append_output(tid, f"\nFehler: {str(e)}\n")
+        finish_task(tid, 1)
+
+
+def list_network_images(mountpoint="/mnt/netshare"):
+    """List disk images on a mounted network share."""
+    if not os.path.ismount(mountpoint):
+        return {"error": "Share nicht gemountet", "images": []}
+    images = []
+    try:
+        for entry in sorted(os.scandir(mountpoint), key=lambda e: e.name):
+            if entry.name.endswith(('.img', '.img.zst', '.img.gz')):
+                stat = entry.stat()
+                has_sha = os.path.exists(entry.path + ".sha256")
+                images.append({
+                    "name": entry.name,
+                    "path": entry.path,
+                    "size": stat.st_size,
+                    "modified": stat.st_mtime,
+                    "has_checksum": has_sha
+                })
+    except OSError as e:
+        return {"error": str(e), "images": []}
+    return {"images": images, "mountpoint": mountpoint}
+
 # Auth rate limiting
 _auth_attempts = {}
 
@@ -3719,7 +3977,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         pass
 
     def _check_auth(self):
-        """Check auth token."""
+        """Check auth token or session."""
         path = urlparse(self.path).path
         if not path.startswith("/api/") or path in ("/api/auth/verify", "/api/auth"):
             return True
@@ -3731,12 +3989,18 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             if part.startswith("flowbit_auth="):
                 cookie_token = part.split("=", 1)[1]
                 break
-        return token == AUTH_TOKEN or cookie_token == AUTH_TOKEN
+        # Check session token first (D02)
+        effective_token = token or cookie_token
+        if effective_token and validate_session(effective_token):
+            return True
+        # Fallback: direct PIN comparison (legacy)
+        return effective_token == AUTH_TOKEN
 
     def do_GET(self):
         with request_counter_lock:
             request_counter["total"] += 1
             request_counter["get"] += 1
+        self._req_start = time.time()
         if not self._check_auth():
             self.send_json({"success": False, "error": "Nicht autorisiert"}, 401)
             return
@@ -3976,6 +4240,61 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             with audit_log_lock:
                 self.send_json({"entries": list(audit_log)})
 
+
+        # ---- SSE Server-Sent Events (C02) ----
+        elif path == "/api/events":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            try:
+                client_id = id(self)
+                with sse_clients_lock:
+                    sse_clients[client_id] = self
+                # Keep connection open, send heartbeat
+                while True:
+                    with sse_clients_lock:
+                        if client_id not in sse_clients:
+                            break
+                    self.wfile.write(b": heartbeat\n\n")
+                    self.wfile.flush()
+                    time.sleep(15)
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                pass
+            finally:
+                with sse_clients_lock:
+                    sse_clients.pop(client_id, None)
+            return
+
+        # ---- Request Log (C06) ----
+        elif path == "/api/requestlog":
+            with request_log_lock:
+                self.send_json({"entries": list(request_log), "total": _request_count})
+
+        # ---- Task Queue Info (C08) ----
+        elif path == "/api/tasks/queue":
+            with tasks_lock:
+                pending = sum(1 for t in tasks.values() if t.get("status") == "pending")
+                running = sum(1 for t in tasks.values() if t.get("status") == "running")
+                done = sum(1 for t in tasks.values() if t.get("status") == "done")
+                cancelled = sum(1 for t in tasks.values() if t.get("status") == "cancelled")
+            self.send_json({"pending": pending, "running": running, "done": done, "cancelled": cancelled, "total": pending + running + done + cancelled})
+
+        # ---- Network Image List (A03) ----
+        elif path == "/api/netimage/list":
+            qs = parse_qs(parsed.query)
+            mp = qs.get("mountpoint", ["/mnt/netshare"])[0]
+            self.send_json(list_network_images(mp))
+
+        # ---- Sessions Info (D02) ----
+        elif path == "/api/sessions":
+            cleanup_sessions()
+            with sessions_lock:
+                count = len(sessions)
+            self.send_json({"active_sessions": count})
+
         else:
             super().do_GET()
 
@@ -3983,6 +4302,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         with request_counter_lock:
             request_counter["total"] += 1
             request_counter["post"] += 1
+        self._req_start = time.time()
         if not self._check_auth():
             self.send_json({"success": False, "error": "Nicht autorisiert"}, 401)
             return
@@ -4007,12 +4327,14 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 return
             pin = data.get("pin", "")
             if pin == AUTH_TOKEN:
+                # Create session (D02)
+                session_token = create_session(source_ip)
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
-                self.send_header("Set-Cookie", f"flowbit_auth={AUTH_TOKEN}; Path=/; HttpOnly; SameSite=Strict")
+                self.send_header("Set-Cookie", f"flowbit_auth={session_token}; Path=/; HttpOnly; SameSite=Strict; Secure")
                 self.end_headers()
                 try:
-                    self.wfile.write(json.dumps({"success": True, "token": AUTH_TOKEN}).encode())
+                    self.wfile.write(json.dumps({"success": True, "token": session_token}).encode())
                 except BrokenPipeError:
                     pass
                 return
@@ -4791,6 +5113,53 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 log_action("USB Eject", f"device={device}", source_ip)
                 self.send_json(eject_usb_device(device))
 
+
+        # ---- Network Image / Disk Imaging on Network Shares (A03) ----
+        elif path == "/api/netimage/mount":
+            share_type = data.get("type", "")
+            server = data.get("server", "")
+            share = data.get("share", "")
+            user = data.get("user")
+            password = data.get("password")
+            mountpoint = data.get("mountpoint", "/mnt/netshare")
+            if not share_type or not server or not share:
+                self.send_json({"error": "type, server and share required"}, 400)
+                return
+            log_action("Network Mount", f"{share_type}://{server}/{share}", source_ip)
+            self.send_json(mount_network_share(share_type, server, share, user, password, mountpoint))
+
+        elif path == "/api/netimage/unmount":
+            mountpoint = data.get("mountpoint", "/mnt/netshare")
+            log_action("Network Unmount", f"mountpoint={mountpoint}", source_ip)
+            self.send_json(unmount_network_share(mountpoint))
+
+        elif path == "/api/netimage/backup":
+            disk = data.get("disk", "")
+            mountpoint = data.get("mountpoint", "/mnt/netshare")
+            compress = data.get("compress", True)
+            if not disk:
+                self.send_json({"error": "disk required"}, 400)
+                return
+            safe_disk = sanitize_device(disk)
+            audit_record("netimage_backup", f"disk={safe_disk}, mountpoint={mountpoint}", source_ip)
+            log_action("Network Backup", f"/dev/{safe_disk} -> {mountpoint}", source_ip)
+            tid = new_task(f"Network Image Backup /dev/{safe_disk}")
+            threading.Thread(target=netimage_backup_thread, args=(tid, safe_disk, mountpoint, compress), daemon=True).start()
+            self.send_json({"task_id": tid})
+
+        elif path == "/api/netimage/restore":
+            image_path = data.get("image_path", "")
+            target = data.get("target", "")
+            if not image_path or not target:
+                self.send_json({"error": "image_path and target required"}, 400)
+                return
+            safe_tgt = sanitize_device(target)
+            audit_record("netimage_restore", f"image={image_path}, target={safe_tgt}", source_ip)
+            log_action("Network Restore", f"{image_path} -> /dev/{safe_tgt}", source_ip)
+            tid = new_task(f"Network Image Restore -> /dev/{safe_tgt}")
+            threading.Thread(target=netimage_restore_thread, args=(tid, image_path, safe_tgt), daemon=True).start()
+            self.send_json({"task_id": tid})
+
         # ---- Audit Log Clear (D03) ----
         elif path == "/api/audit/clear":
             with audit_log_lock:
@@ -4824,6 +5193,13 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps(data).encode())
         except BrokenPipeError:
             pass
+        # Request logging (C06)
+        try:
+            duration = (time.time() - getattr(self, '_req_start', time.time())) * 1000
+            ip = self.client_address[0] if self.client_address else ""
+            log_request(self.command, urlparse(self.path).path, status, duration, ip)
+        except Exception:
+            pass
 
     def send_file(self, filename):
         filepath = STATIC_DIR / filename
@@ -4845,14 +5221,83 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(404)
 
 
+
+# ---- HTTP Redirect Handler (D01) ----
+
+class RedirectHandler(http.server.BaseHTTPRequestHandler):
+    """Simple HTTP handler that redirects all requests to HTTPS."""
+    def do_GET(self):
+        self.send_response(301)
+        host = self.headers.get('Host', '').split(':')[0]
+        self.send_header('Location', f'https://{host}:{PORT}{self.path}')
+        self.end_headers()
+
+    def do_POST(self):
+        self.do_GET()
+
+    def log_message(self, format, *args):
+        pass
+
+
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
 
 
+def _session_cleanup_loop():
+    """Periodically clean up expired sessions."""
+    while True:
+        time.sleep(300)
+        cleanup_sessions()
+
+
+def _sse_sysinfo_loop():
+    """Periodically broadcast system info to SSE clients."""
+    while True:
+        time.sleep(30)
+        try:
+            with sse_clients_lock:
+                if not sse_clients:
+                    continue
+            cpu_load = run_cmd("cat /proc/loadavg | cut -d' ' -f1-3", "0 0 0", timeout=2)
+            mem = run_cmd("free -m | grep Mem | awk '{print $3\"/\"$2}'", "?", timeout=2)
+            sse_broadcast("sysinfo", {"cpu_load": cpu_load, "memory": mem, "time": time.strftime("%H:%M:%S")})
+        except Exception:
+            pass
+
+
 if __name__ == "__main__":
-    print(f"flowbit OS Server v{FLOWBIT_VERSION} starting on port {PORT}...")
-    print(f"\n  Auth-PIN: {AUTH_TOKEN}\n")
+    print(f"flowbit OS Server v{FLOWBIT_VERSION}")
+    print(f"  Auth-PIN: {AUTH_TOKEN}")
+
+    # Generate HTTPS cert (D01)
+    cert_file, key_file = create_self_signed_cert()
+
+    # Start HTTPS server
     server = ThreadedHTTPServer(("0.0.0.0", PORT), ITToolsHandler)
+    try:
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_file, key_file)
+        server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        print(f"  HTTPS: https://0.0.0.0:{PORT}")
+    except Exception as e:
+        print(f"  WARNUNG: HTTPS fehlgeschlagen ({e}), starte ohne SSL...")
+
+    # Start HTTP redirect server on port 8081 (D01)
+    try:
+        redirect_server = ThreadedHTTPServer(("0.0.0.0", HTTP_PORT), RedirectHandler)
+        redirect_thread = threading.Thread(target=redirect_server.serve_forever, daemon=True)
+        redirect_thread.start()
+        print(f"  HTTP redirect: http://0.0.0.0:{HTTP_PORT} -> https://0.0.0.0:{PORT}")
+    except Exception as e:
+        print(f"  HTTP redirect port {HTTP_PORT} nicht verfügbar: {e}")
+
+    # Start session cleanup thread (D02)
+    threading.Thread(target=_session_cleanup_loop, daemon=True).start()
+
+    # Start SSE sysinfo broadcast thread (C02)
+    threading.Thread(target=_sse_sysinfo_loop, daemon=True).start()
+
+    print(f"  Server bereit.\n")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
