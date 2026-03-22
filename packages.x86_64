@@ -28,7 +28,6 @@ binutils
 # Wiper module dependencies
 hdparm
 nvme-cli
-nwipe
 sdparm
 smartmontools
 pv
