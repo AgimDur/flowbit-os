@@ -1679,73 +1679,7 @@ $ </div>
 
 
 <!-- Auth Overlay -->
-<div id="auth-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.95);z-index:9999;display:flex;align-items:center;justify-content:center">
-  <div style="background:var(--bg-card);padding:40px;border-radius:16px;text-align:center;max-width:360px;width:90%;border:1px solid var(--border)">
-    <h2 style="margin-bottom:8px;color:var(--text-bright)">flowbit OS</h2>
-    <p style="color:var(--text-dim);font-size:13px;margin-bottom:24px">Bitte PIN eingeben</p>
-    <input type="password" id="auth-pin" placeholder="PIN" maxlength="8" style="text-align:center;font-size:24px;letter-spacing:8px;width:100%;padding:14px;margin-bottom:16px" onkeydown="if(event.key==='Enter')doAuth()">
-    <button class="btn" onclick="doAuth()" style="width:100%;padding:12px">Anmelden</button>
-    <p id="auth-error" style="color:var(--danger);font-size:12px;margin-top:12px;display:none">Falscher PIN</p>
-    <p id="auth-https-note" style="color:var(--text-dim);font-size:11px;margin-top:16px;display:none">Bei HTTPS: Selbstsigniertes Zertifikat im Browser akzeptieren.</p>
-  </div>
-</div>
 
-
-<!-- Command Palette (Ctrl+K) -->
-<div id="cmd-palette-bg" onclick="closeCmdPalette()"></div>
-<div id="cmd-palette" role="dialog" aria-label="Befehlspalette" aria-modal="true">
-  <input type="text" id="cmd-input" placeholder="Befehl suchen... (Esc zum Schliessen)" oninput="filterCommands(this.value)" onkeydown="cmdKeyHandler(event)" aria-label="Befehl suchen">
-  <div id="cmd-results"></div>
-</div>
-
-<!-- Shortcut Overlay -->
-<div id="shortcut-overlay" onclick="if(event.target===this)this.classList.remove('show')">
-  <div class="shortcut-panel">
-    <h2>&#9000; Tastenkürzel</h2>
-    <div class="shortcut-grid">
-      <div class="shortcut-row"><span class="shortcut-desc">Dashboard</span><span class="shortcut-key">1</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">System Info</span><span class="shortcut-key">2</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Wiper</span><span class="shortcut-key">3</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Netzwerk</span><span class="shortcut-key">4</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Datenträger</span><span class="shortcut-key">5</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Hardware Test</span><span class="shortcut-key">6</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">BIOS Tools</span><span class="shortcut-key">7</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Backup/Restore</span><span class="shortcut-key">8</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">WiFi</span><span class="shortcut-key">9</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Datei-Explorer</span><span class="shortcut-key">0</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Partitionen</span><span class="shortcut-key">P</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Antivirus</span><span class="shortcut-key">A</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Registry</span><span class="shortcut-key">G</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Wizard</span><span class="shortcut-key">W</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Terminal</span><span class="shortcut-key">X</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Daten aktualisieren</span><span class="shortcut-key">R</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Theme wechseln</span><span class="shortcut-key">T</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Sprache wechseln</span><span class="shortcut-key">L</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Befehlspalette</span><span class="shortcut-key">Ctrl+K</span></div>
-      <div class="shortcut-row"><span class="shortcut-desc">Diese Hilfe</span><span class="shortcut-key">?</span></div>
-    </div>
-    <button class="btn btn-outline" onclick="document.getElementById('shortcut-overlay').classList.remove('show')" style="margin-top:20px;width:100%">Schliessen (Esc)</button>
-  </div>
-</div>
-
-<!-- Status Bar -->
-<div id="statusbar">
-  <span class="sb-item" id="sb-cpu"><span class="sb-dot green"></span> CPU: --</span>
-  <span class="sb-item" id="sb-ram">RAM: --</span>
-  <span class="sb-item" id="sb-net"><span class="sb-dot green"></span> Netz: --</span>
-  <span class="sb-item" id="sb-tasks" style="cursor:pointer" onclick="toggleTaskOverview()">Tasks: 0</span>
-  <span style="flex:1"></span>
-  <span class="sb-item" id="sb-uptime">Uptime: --</span>
-  <span class="sb-item" id="sb-version">flowbit OS</span>
-</div>
-
-<div id="task-overview">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <strong style="font-size:13px">Laufende Tasks</strong>
-        <button class="btn btn-sm btn-outline" onclick="document.getElementById('task-overview').style.display='none'" aria-label="Schliessen" style="padding:2px 8px">&#10005;</button>
-    </div>
-    <div id="task-overview-list"><div style="color:var(--text-dim);font-size:12px;text-align:center;padding:12px">Keine laufenden Tasks</div></div>
-</div>
 
 <div class="toast-container" id="toast-container" aria-live="polite" role="status"></div>
 
@@ -1958,7 +1892,7 @@ async function api(path, data) {
     const opts = data !== undefined ? {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
     } : {};
-    const token = localStorage.getItem('authToken');
+    // Auth deaktiviert
     if (token) {
       opts.headers = opts.headers || {};
       opts.headers['X-Auth-Token'] = token;
@@ -4023,23 +3957,13 @@ document.querySelector('.nav-main').classList.add('no-sub');
 
 // ---- AUTH ----
 function checkAuth() {
-  if (!localStorage.getItem('authToken')) {
+  if (false) {
     document.getElementById('auth-overlay').style.display = 'flex';
   } else {
     document.getElementById('auth-overlay').style.display = 'none';
   }
 }
-async function doAuth() {
-  const pin = document.getElementById('auth-pin').value;
-  if (!pin) return;
-  const r = await fetch('/api/auth', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin})});
-  const data = await r.json().catch(()=>({}));
-  if (data.token) {
-    localStorage.setItem('authToken', data.token);
-    document.getElementById('auth-overlay').style.display = 'none';
-    loadSysinfo();
-    try { connectSSE(); } catch(e) { console.warn('SSE not available after auth'); }
-  } else {
+async function doAuth() { /* deaktiviert */ } else {
     document.getElementById('auth-error').style.display = 'block';
     document.getElementById('auth-pin').value = '';
     document.getElementById('auth-pin').focus();
@@ -4064,7 +3988,7 @@ async function loadQrCode() {
 async function exportAll() {
   toast('Erstelle Export...', 'info');
   try {
-    const token = localStorage.getItem('authToken');
+    // Auth deaktiviert
     const url = '/api/export/all' + (token ? '?token=' + encodeURIComponent(token) : '');
     const a = document.createElement('a');
     a.href = url;
@@ -4647,7 +4571,7 @@ let eventSource = null;
 
 function connectSSE() {
     if (eventSource) eventSource.close();
-    const token = localStorage.getItem('authToken');
+    // Auth deaktiviert
     eventSource = new EventSource('/api/events' + (token ? '?token=' + token : ''));
 
     eventSource.addEventListener('task_update', (e) => {
@@ -4923,7 +4847,7 @@ const featureDescriptions = [
 
 
 // Init
-checkAuth();
+// Auth deaktiviert
 loadSysinfo();
 // Try SSE for real-time updates, fallback to polling
 try { connectSSE(); } catch(e) { console.warn('SSE not available, using polling fallback'); }

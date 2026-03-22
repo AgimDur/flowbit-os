@@ -33,7 +33,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 PORT = 8080
 HTTPS_PORT = 8443  # HTTPS for remote access
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "6.2.3"
+FLOWBIT_VERSION = "6.2.4"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -4210,33 +4210,9 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         pass
 
     def _check_auth(self):
-        """Check auth token or session."""
-        # Localhost bypass — Kiosk-Modus braucht keinen PIN
-        client_ip = self.client_address[0] if self.client_address else ""
-        if client_ip in ("127.0.0.1", "::1", "localhost"):
-            return True
-        path = urlparse(self.path).path
-        if not path.startswith("/api/") or path in ("/api/auth/verify", "/api/auth"):
-            return True
-        token = self.headers.get("X-Auth-Token", "")
-        cookies = self.headers.get("Cookie", "")
-        cookie_token = ""
-        for part in cookies.split(";"):
-            part = part.strip()
-            if part.startswith("flowbit_auth="):
-                cookie_token = part.split("=", 1)[1]
-                break
-        # Also check query param token for SSE
-        qs = parse_qs(urlparse(self.path).query)
-        qs_token = qs.get("token", [""])[0]
-        if qs_token and validate_session(qs_token):
-            return True
-        # Check session token first (D02)
-        effective_token = token or cookie_token
-        if effective_token and validate_session(effective_token):
-            return True
-        # Fallback: direct PIN comparison (legacy)
-        return effective_token == AUTH_TOKEN
+        """Auth deaktiviert — kein PIN nötig."""
+        return True
+
 
     def do_GET(self):
         with request_counter_lock:
