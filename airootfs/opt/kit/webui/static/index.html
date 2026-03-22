@@ -1567,6 +1567,9 @@ function showPage(name) {
   }
   if (name === 'registry') loadRegPartitions();
   if (name === 'wizard') { loadWizards(); loadChecklists(); }
+  // Bandwidth interval management
+  if (bandwidthInterval) { clearInterval(bandwidthInterval); bandwidthInterval = null; }
+  if (name === 'dashboard') { bandwidthInterval = trackInterval(setInterval(updateBandwidth, 2000)); }
 }
 
 // Main tab click handlers
@@ -1662,7 +1665,7 @@ function pollTask(taskId, containerId) {
     if (pp) pp.textContent = t.progress + '%';
     if (to) { to.textContent = t.output; to.scrollTop = to.scrollHeight; }
 
-    if (t.status === 'done') {
+    if (t.status === 'done' || t.status === 'error' || t.status === 'cancelled') {
       clearInterval(iv);
       if (pt) {
         const dur = t.finished && t.started ? Math.round(t.finished - t.started) : 0;
@@ -1671,7 +1674,10 @@ function pollTask(taskId, containerId) {
       const container = document.getElementById(containerId);
       const statusEl = container.querySelector('.task-status');
       if (statusEl) {
-        if (t.exit_code === 0) {
+        if (t.status === 'cancelled') {
+          statusEl.className = 'task-status task-error';
+          statusEl.innerHTML = 'Abgebrochen';
+        } else if (t.exit_code === 0) {
           statusEl.className = 'task-status task-done';
           statusEl.innerHTML = 'Abgeschlossen';
         } else {
@@ -1736,7 +1742,7 @@ function updateDashboard() {
   if (tempEl) {
     if (tempVal > 0) {
       const cls = tempVal >= 80 ? 'badge-danger' : tempVal >= 60 ? 'badge-warning' : 'badge-success';
-      tempEl.innerHTML = `<span class="badge ${cls}" style="font-size:18px;padding:6px 14px">${s.cpu_temp}</span>`;
+      tempEl.innerHTML = `<span class="badge ${cls}" style="font-size:18px;padding:6px 14px">${escapeHtml(s.cpu_temp)}</span>`;
     } else {
       tempEl.innerHTML = '<span class="badge badge-info">N/A</span>';
     }
@@ -1746,20 +1752,20 @@ function updateDashboard() {
   const netInfoEl = document.getElementById('dash-net-info');
   if (netInfoEl) {
     const activeIf = (s.interfaces||[]).find(i=>i.state==='up') || {};
-    netInfoEl.innerHTML = `<div><strong>IP:</strong> ${activeIf.ip || 'keine'}</div>
-      <div><strong>Gateway:</strong> ${s.gateway || 'N/A'}</div>
-      <div><strong>DNS:</strong> ${s.dns_server || 'N/A'}</div>
-      <div><strong>Speed:</strong> ${activeIf.speed && activeIf.speed !== '?' ? activeIf.speed + ' Mbit/s' : 'N/A'}</div>
-      <div><strong>MAC:</strong> <span style="font-family:monospace;font-size:11px">${activeIf.mac || 'N/A'}</span></div>`;
+    netInfoEl.innerHTML = `<div><strong>IP:</strong> ${escapeHtml(activeIf.ip || 'keine')}</div>
+      <div><strong>Gateway:</strong> ${escapeHtml(s.gateway || 'N/A')}</div>
+      <div><strong>DNS:</strong> ${escapeHtml(s.dns_server || 'N/A')}</div>
+      <div><strong>Speed:</strong> ${activeIf.speed && activeIf.speed !== '?' ? escapeHtml(activeIf.speed) + ' Mbit/s' : 'N/A'}</div>
+      <div><strong>MAC:</strong> <span style="font-family:monospace;font-size:11px">${escapeHtml(activeIf.mac || 'N/A')}</span></div>`;
   }
 
   // Dashboard extras: System info
   const sysInfoEl = document.getElementById('dash-sys-info');
   if (sysInfoEl) {
-    sysInfoEl.innerHTML = `<div><strong>Uptime:</strong> ${(s.uptime||'N/A').replace('up ','')}</div>
-      <div><strong>Boot:</strong> ${s.boot_mode || 'N/A'}</div>
-      <div><strong>Kernel:</strong> ${s.kernel || 'N/A'}</div>
-      <div><strong>Host:</strong> ${s.hostname || 'N/A'}</div>`;
+    sysInfoEl.innerHTML = `<div><strong>Uptime:</strong> ${escapeHtml((s.uptime||'N/A').replace('up ',''))}</div>
+      <div><strong>Boot:</strong> ${escapeHtml(s.boot_mode || 'N/A')}</div>
+      <div><strong>Kernel:</strong> ${escapeHtml(s.kernel || 'N/A')}</div>
+      <div><strong>Host:</strong> ${escapeHtml(s.hostname || 'N/A')}</div>`;
   }
 
   // Dashboard extras: Disk health (async)
@@ -1775,7 +1781,7 @@ async function updateDashDiskHealth() {
     el.innerHTML = r.disks.map(d => {
       const icon = (d.health === 'PASSED' || d.health === 'OK') ? '&#10004;' : d.health === 'FAILED' ? '&#10060;' : '&#9888;';
       const color = (d.health === 'PASSED' || d.health === 'OK') ? 'var(--success)' : d.health === 'FAILED' ? 'var(--danger)' : 'var(--warning)';
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span>${d.name}</span><span style="color:${color}">${icon} ${d.health||'?'}</span></div>`;
+      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:2px 0"><span>${escapeHtml(d.name)}</span><span style="color:${color}">${icon} ${escapeHtml(d.health||'?')}</span></div>`;
     }).join('');
   } catch(e) { el.innerHTML = '<span style="color:var(--text-dim)">Fehler</span>'; }
 }
@@ -1795,7 +1801,7 @@ function updateSysinfoPage() {
   let dh = '<thead><tr><th>Device</th><th>Typ</th><th>Grösse</th><th>Modell</th><th>SMART</th></tr></thead><tbody>';
   (s.disks||[]).forEach(d => {
     const b = d.smart==='PASSED'?'badge-success':d.smart==='FAILED'?'badge-danger':'badge-warning';
-    dh += `<tr><td>/dev/${d.name}</td><td><span class="badge badge-info">${d.type}</span></td><td>${d.size}</td><td>${d.model}</td><td><span class="badge ${b}">${d.smart}</span></td></tr>`;
+    dh += `<tr><td>/dev/${escapeHtml(d.name)}</td><td><span class="badge badge-info">${escapeHtml(d.type)}</span></td><td>${escapeHtml(d.size)}</td><td>${escapeHtml(d.model)}</td><td><span class="badge ${b}">${escapeHtml(d.smart)}</span></td></tr>`;
   });
   document.getElementById('tbl-disks-info').innerHTML = dh + '</tbody>';
 
@@ -1803,7 +1809,7 @@ function updateSysinfoPage() {
   let nh = '<thead><tr><th>Interface</th><th>MAC</th><th>IP</th><th>Status</th></tr></thead><tbody>';
   (s.interfaces||[]).forEach(i => {
     const b = i.state==='up'?'badge-success':'badge-danger';
-    nh += `<tr><td>${i.name}</td><td style="font-family:monospace;font-size:11px">${i.mac}</td><td>${i.ip}</td><td><span class="badge ${b}">${i.state}</span></td></tr>`;
+    nh += `<tr><td>${escapeHtml(i.name)}</td><td style="font-family:monospace;font-size:11px">${escapeHtml(i.mac)}</td><td>${escapeHtml(i.ip)}</td><td><span class="badge ${b}">${escapeHtml(i.state)}</span></td></tr>`;
   });
   document.getElementById('tbl-net-info').innerHTML = nh + '</tbody>';
 
@@ -1812,7 +1818,7 @@ function updateSysinfoPage() {
     document.getElementById('ram-slots-card').style.display = 'block';
     let rh = '<thead><tr><th>Slot</th><th>Grösse</th><th>Typ</th><th>Speed</th><th>Hersteller</th></tr></thead><tbody>';
     s.ram_slots.forEach(r => {
-      rh += `<tr><td>${r.locator||'?'}</td><td>${r.size||'?'}</td><td>${r.type||'?'}</td><td>${r.speed||'?'}</td><td>${r.manufacturer||'?'}</td></tr>`;
+      rh += `<tr><td>${escapeHtml(r.locator||'?')}</td><td>${escapeHtml(r.size||'?')}</td><td>${escapeHtml(r.type||'?')}</td><td>${escapeHtml(r.speed||'?')}</td><td>${escapeHtml(r.manufacturer||'?')}</td></tr>`;
     });
     document.getElementById('tbl-ram-slots').innerHTML = rh + '</tbody>';
   }
@@ -1823,7 +1829,7 @@ function updateDisksPage() {
   let h = '';
   (sysinfo.disks||[]).forEach(d => {
     const b = d.smart==='PASSED'?'badge-success':d.smart==='FAILED'?'badge-danger':'badge-warning';
-    h += `<tr><td>/dev/${d.name}</td><td><span class="badge badge-info">${d.type}</span></td><td>${d.size}</td><td>${d.model}</td><td style="font-family:monospace;font-size:11px">${d.serial}</td><td><span class="badge ${b}">${d.smart}</span></td><td><button class="btn btn-sm btn-outline" onclick="showSmart('${escapeAttr(d.name)}')">SMART</button></td></tr>`;
+    h += `<tr><td>/dev/${escapeHtml(d.name)}</td><td><span class="badge badge-info">${escapeHtml(d.type)}</span></td><td>${escapeHtml(d.size)}</td><td>${escapeHtml(d.model)}</td><td style="font-family:monospace;font-size:11px">${escapeHtml(d.serial)}</td><td><span class="badge ${b}">${escapeHtml(d.smart)}</span></td><td><button class="btn btn-sm btn-outline" onclick="showSmart('${escapeAttr(d.name)}')">SMART</button></td></tr>`;
   });
   tbody.innerHTML = h;
 }
@@ -1900,7 +1906,8 @@ function exportScreenshot() {
 // ---- BATTERY ----
 async function loadBattery() {
   const r = await api('battery');
-  if (!r.available) return;
+  const hasBattery = r.batteries && r.batteries.length > 0;
+  if (!hasBattery) return;
   document.getElementById('battery-card').style.display = 'block';
   let html = '<div class="grid-2"><div>';
   html += '<div class="info-grid">';
@@ -1936,7 +1943,7 @@ async function loadMonitors() {
   document.getElementById('monitor-card').style.display = 'block';
   const tbody = document.querySelector('#tbl-monitors tbody');
   tbody.innerHTML = r.monitors.map(m =>
-    `<tr><td>${m.name||'?'}</td><td>${m.manufacturer||'?'}</td><td>${m.resolution||'?'}</td><td>${m.connection||'?'}</td><td style="font-family:monospace;font-size:11px">${m.serial||'?'}</td></tr>`
+    `<tr><td>${escapeHtml(m.name||'?')}</td><td>${escapeHtml(m.manufacturer||'?')}</td><td>${escapeHtml(m.resolution||'?')}</td><td>${escapeHtml(m.connection||'?')}</td><td style="font-family:monospace;font-size:11px">${escapeHtml(m.serial||'?')}</td></tr>`
   ).join('');
 }
 
@@ -1981,15 +1988,15 @@ async function sendWol() {
   if (!mac) return;
   const r = await api('wol', {mac});
   document.getElementById('wol-result').innerHTML = r.success ?
-    '<span style="color:var(--success)">Magic Packet gesendet an ' + mac + '</span>' :
-    '<span style="color:var(--danger)">Fehler: ' + (r.error||'unbekannt') + '</span>';
+    '<span style="color:var(--success)">Magic Packet gesendet an ' + escapeHtml(mac) + '</span>' :
+    '<span style="color:var(--danger)">Fehler: ' + escapeHtml(r.error||'unbekannt') + '</span>';
   loadWolHistory();
 }
 async function loadWolHistory() {
   const r = await api('wol/history');
   const el = document.getElementById('wol-history');
   if (r.history && r.history.length) {
-    el.innerHTML = r.history.map(h => `<div style="padding:3px 0">${h.mac} — ${h.time}</div>`).join('');
+    el.innerHTML = r.history.map(h => `<div style="padding:3px 0">${escapeHtml(h.mac)} — ${escapeHtml(h.time)}</div>`).join('');
   } else el.textContent = 'Keine Einträge';
 }
 
@@ -2001,11 +2008,11 @@ async function startNetScan() {
     renderTaskUI('netscan-task', r.task_id);
     const checkResults = setInterval(async () => {
       const t = await api('task/' + r.task_id);
-      if (t.status === 'done' && t.results) {
+      if (t.status === 'done' && t.hosts) {
         clearInterval(checkResults);
         const tbl = document.getElementById('tbl-netscan');
         tbl.style.display = 'table';
-        tbl.querySelector('tbody').innerHTML = t.results.map(h =>
+        tbl.querySelector('tbody').innerHTML = t.hosts.map(h =>
           `<tr><td>${escapeHtml(h.ip)}</td><td style="font-family:monospace;font-size:11px">${escapeHtml(h.mac||'?')}</td><td>${escapeHtml(h.hostname||'?')}</td><td><button class="btn btn-sm btn-outline" onclick="document.getElementById('wol-mac').value='${escapeAttr(h.mac)}';document.getElementById('wol-card').scrollIntoView({behavior:'smooth'})">WOL</button></td></tr>`
         ).join('');
       }
@@ -2079,7 +2086,7 @@ async function loadBiosSettings() {
   const tbody = document.querySelector('#tbl-bios-settings tbody');
   let h = '';
   r.settings.forEach(s => {
-    h += `<tr><td>${s.display_name||s.name}</td><td><strong>${s.current_value||'N/A'}</strong></td><td>${s.default_value||'-'}</td><td style="font-size:11px;color:var(--text-dim)">${s.possible_values||''}</td></tr>`;
+    h += `<tr><td>${escapeHtml(s.display_name||s.name)}</td><td><strong>${escapeHtml(s.current_value||'N/A')}</strong></td><td>${escapeHtml(s.default_value||'-')}</td><td style="font-size:11px;color:var(--text-dim)">${escapeHtml(s.possible_values||'')}</td></tr>`;
   });
   tbody.innerHTML = h || '<tr><td colspan="4" style="color:var(--text-dim)">Keine Settings verfügbar</td></tr>';
 
@@ -2128,7 +2135,7 @@ async function loadBootDevices() {
     html += '<ol style="margin:8px 0 16px 20px;font-size:13px">';
     (r.boot_entries||[]).forEach(e => {
       const icon = e.active ? '&#128994;' : '&#9898;';
-      html += `<li style="padding:4px 0">${icon} ${e.name} <span style="color:var(--text-dim);font-size:11px">${e.path||''}</span></li>`;
+      html += `<li style="padding:4px 0">${icon} ${escapeHtml(e.name)} <span style="color:var(--text-dim);font-size:11px">${escapeHtml(e.path||'')}</span></li>`;
     });
     html += '</ol>';
   }
@@ -2136,7 +2143,7 @@ async function loadBootDevices() {
     html += '<div class="section-title">Bootfähige Datenträger</div>';
     html += '<table><thead><tr><th>Device</th><th>Grösse</th><th>Typ</th><th>Label</th></tr></thead><tbody>';
     r.bootable_disks.forEach(d => {
-      html += `<tr><td>${d.name}</td><td>${d.size}</td><td>${d.fstype||'?'}</td><td>${d.label||'-'}</td></tr>`;
+      html += `<tr><td>${escapeHtml(d.name)}</td><td>${escapeHtml(d.size)}</td><td>${escapeHtml(d.fstype||'?')}</td><td>${escapeHtml(d.label||'-')}</td></tr>`;
     });
     html += '</tbody></table>';
   }
@@ -2240,8 +2247,12 @@ async function connectWifi() {
 }
 async function loadWifiStatus() {
   const r = await api('wifi/status');
-  document.getElementById('wifi-status').innerHTML = r.connected ?
-    `<span class="badge badge-success">Verbunden</span> ${r.ssid||''} (${r.ip||''})` :
+  const conn = (r.connections && r.connections.length) ? r.connections[0] : null;
+  const connected = !!conn;
+  const ssid = conn ? conn.name : '';
+  const ip = conn ? conn.ip : '';
+  document.getElementById('wifi-status').innerHTML = connected ?
+    `<span class="badge badge-success">Verbunden</span> ${escapeHtml(ssid)} (${escapeHtml(ip)})` :
     '<span class="badge badge-warning">Nicht verbunden</span>';
   const saved = await api('wifi/saved');
   document.getElementById('wifi-saved').innerHTML = (saved.networks||[]).map(n =>
@@ -2474,7 +2485,7 @@ async function loadSmartDashboard() {
     const icon = d.health === 'PASSED' || d.health === 'OK' ? '&#10004;' : d.health === 'FAILED' ? '&#10060;' : '&#9888;';
     return `<div class="stat-card">
       <div style="display:flex;justify-content:space-between;align-items:center">
-        <div><div class="stat-label">/dev/${d.name}</div><div class="stat-value" style="font-size:16px">${d.model||d.name}</div></div>
+        <div><div class="stat-label">/dev/${escapeHtml(d.name)}</div><div class="stat-value" style="font-size:16px">${escapeHtml(d.model||d.name)}</div></div>
         <div style="font-size:28px">${icon}</div>
       </div>
       <div style="margin-top:10px;font-size:12px;color:var(--text-dim)">
@@ -2494,7 +2505,7 @@ async function checkBitlocker() {
   if (!part) return;
   const r = await api('bitlocker', {partition: part});
   document.getElementById('bitlocker-result').innerHTML = r.encrypted ?
-    '<span class="badge badge-warning">Bitlocker verschlüsselt</span><div style="margin-top:8px;font-size:12px;color:var(--text-dim)">' + (r.info||'') + '</div>' :
+    '<span class="badge badge-warning">Bitlocker verschlüsselt</span><div style="margin-top:8px;font-size:12px;color:var(--text-dim)">' + escapeHtml(r.info||'') + '</div>' :
     '<span class="badge badge-success">Nicht verschlüsselt</span>';
 }
 
@@ -2506,7 +2517,7 @@ async function testVnc() {
   document.getElementById('vnc-result').innerHTML = '<div class="spinner"></div> Teste...';
   const r = await api('vnc/test', {host, port: parseInt(port)});
   document.getElementById('vnc-result').innerHTML = r.reachable ?
-    '<span style="color:var(--success)">VNC-Server erreichbar auf ' + host + ':' + port + '</span>' :
+    '<span style="color:var(--success)">VNC-Server erreichbar auf ' + escapeHtml(host) + ':' + escapeHtml(port) + '</span>' :
     '<span style="color:var(--danger)">VNC-Server nicht erreichbar</span>';
 }
 
@@ -2516,9 +2527,9 @@ async function loadWinKeys() {
   const card = document.getElementById('winkeys-card');
   card.style.display = 'block';
   let html = '<div class="info-grid">';
-  if (r.bios_key) html += '<div class="info-label">BIOS/OEM Key</div><div class="info-value" style="font-family:monospace">' + r.bios_key + '</div>';
+  if (r.bios_key) html += '<div class="info-label">BIOS/OEM Key</div><div class="info-value" style="font-family:monospace">' + escapeHtml(r.bios_key) + '</div>';
   (r.registry_keys||[]).forEach(k => {
-    html += '<div class="info-label">' + k.product + '</div><div class="info-value" style="font-family:monospace">' + k.key + '</div>';
+    html += '<div class="info-label">' + escapeHtml(k.product) + '</div><div class="info-value" style="font-family:monospace">' + escapeHtml(k.key) + '</div>';
   });
   if (!r.bios_key && (!r.registry_keys || !r.registry_keys.length)) html += '<div class="info-label">Status</div><div class="info-value">Keine Keys gefunden</div>';
   html += '</div>';
@@ -2530,9 +2541,9 @@ async function loadPxeInfo() {
   const r = await api('serverip');
   document.getElementById('pxe-info').innerHTML = `
     <div class="info-grid">
-      <div class="info-label">Server IP</div><div class="info-value">${r.ip}</div>
+      <div class="info-label">Server IP</div><div class="info-value">${escapeHtml(r.ip)}</div>
       <div class="info-label">Status</div><div class="info-value"><span class="badge badge-info">Verfügbar (manuell)</span></div>
-      <div class="info-label">Anleitung</div><div class="info-value">DHCP-Server mit next-server=${r.ip} und filename="pxelinux.0" konfigurieren</div>
+      <div class="info-label">Anleitung</div><div class="info-value">DHCP-Server mit next-server=${escapeHtml(r.ip)} und filename="pxelinux.0" konfigurieren</div>
     </div>`;
 }
 
@@ -2583,7 +2594,7 @@ async function updateBandwidth() {
       const rxSpeed = ((stats.rx_bytes - prev.rx_bytes) / 2);
       const txSpeed = ((stats.tx_bytes - prev.tx_bytes) / 2);
       html += `<div class="stat-card">
-        <div class="stat-label">${iface}</div>
+        <div class="stat-label">${escapeHtml(iface)}</div>
         <div style="display:flex;gap:20px;margin-top:6px">
           <div><span style="color:var(--success);font-size:11px">▼ DL</span><div style="font-size:16px;font-weight:700">${formatSpeed(rxSpeed)}</div></div>
           <div><span style="color:var(--accent);font-size:11px">▲ UL</span><div style="font-size:16px;font-weight:700">${formatSpeed(txSpeed)}</div></div>
@@ -2600,7 +2611,7 @@ function formatSpeed(bps) {
   if (bps > 1024) return (bps/1024).toFixed(1) + ' KB/s';
   return bps.toFixed(0) + ' B/s';
 }
-trackInterval(setInterval(() => { if (currentPage === 'dashboard') updateBandwidth(); }, 2000));
+let bandwidthInterval = null;
 
 // ---- FIRMWARE UPDATES ----
 async function loadFirmware() {
@@ -2613,7 +2624,7 @@ async function loadFirmware() {
   devList.forEach(d => {
     const hasUpdate = (updates.Devices||[]).some(u => u.DeviceId === d.DeviceId);
     html += `<div style="padding:8px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
-      <div><strong>${d.Name||'?'}</strong><br><span style="color:var(--text-dim);font-size:11px">${d.Vendor||''} | Version: ${d.Version||'?'}</span></div>
+      <div><strong>${escapeHtml(d.Name||'?')}</strong><br><span style="color:var(--text-dim);font-size:11px">${escapeHtml(d.Vendor||'')} | Version: ${escapeHtml(d.Version||'?')}</span></div>
       ${hasUpdate ? '<span class="badge badge-warning">Update verfügbar</span>' : '<span class="badge badge-success">Aktuell</span>'}
     </div>`;
   });
@@ -2625,9 +2636,9 @@ async function loadSecureBoot() {
   const r = await api('secureboot');
   let html = '<div class="info-grid">';
   html += `<div class="info-label">Secure Boot</div><div class="info-value"><span class="badge ${r.state==='enabled'?'badge-success':'badge-warning'}">${r.state||'?'}</span></div>`;
-  html += `<div class="info-label">Setup Mode</div><div class="info-value">${r.setup_mode||'?'}</div>`;
+  html += `<div class="info-label">Setup Mode</div><div class="info-value">${escapeHtml(r.setup_mode||'?')}</div>`;
   html += '</div>';
-  if (r.mok_keys) html += `<div class="section-title" style="margin-top:12px">MOK Keys</div><div class="terminal" style="max-height:150px">${r.mok_keys}</div>`;
+  if (r.mok_keys) html += `<div class="section-title" style="margin-top:12px">MOK Keys</div><div class="terminal" style="max-height:150px">${escapeHtml(r.mok_keys)}</div>`;
   document.getElementById('secureboot-info').innerHTML = html;
 }
 
@@ -2648,9 +2659,9 @@ async function loadPartLayout() {
   const devs = r.blockdevices || [];
   let html = '<table><thead><tr><th>Device</th><th>Grösse</th><th>Typ</th><th>Dateisystem</th><th>Mount</th><th>Label</th><th>Aktion</th></tr></thead><tbody>';
   devs.forEach(d => {
-    html += `<tr style="font-weight:600"><td>/dev/${d.name}</td><td>${d.size}</td><td>${d.type}</td><td>${d.fstype||'-'}</td><td>${d.mountpoint||'-'}</td><td>${d.label||'-'}</td><td></td></tr>`;
+    html += `<tr style="font-weight:600"><td>/dev/${escapeHtml(d.name)}</td><td>${escapeHtml(d.size)}</td><td>${escapeHtml(d.type)}</td><td>${escapeHtml(d.fstype||'-')}</td><td>${escapeHtml(d.mountpoint||'-')}</td><td>${escapeHtml(d.label||'-')}</td><td></td></tr>`;
     (d.children||[]).forEach(c => {
-      html += `<tr><td style="padding-left:24px">/dev/${c.name}</td><td>${c.size}</td><td>${c.type}</td><td>${c.fstype||'-'}</td><td>${c.mountpoint||'-'}</td><td>${c.label||'-'}</td>
+      html += `<tr><td style="padding-left:24px">/dev/${escapeHtml(c.name)}</td><td>${escapeHtml(c.size)}</td><td>${escapeHtml(c.type)}</td><td>${escapeHtml(c.fstype||'-')}</td><td>${escapeHtml(c.mountpoint||'-')}</td><td>${escapeHtml(c.label||'-')}</td>
         <td><button class="btn btn-sm btn-outline" onclick="deletePartition('${escapeAttr(d.name)}','${escapeAttr(c.name)}')">Löschen</button></td></tr>`;
     });
   });
@@ -2825,8 +2836,8 @@ async function loadNotes() {
   const r = await api('notes');
   document.getElementById('notes-list').innerHTML = (r.notes||[]).map(n =>
     `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div><strong>${n.title}</strong> <span style="color:var(--text-dim);font-size:11px">${n.created}</span><br>
-      <span style="font-size:13px">${n.content}</span></div>
+      <div><strong>${escapeHtml(n.title)}</strong> <span style="color:var(--text-dim);font-size:11px">${escapeHtml(n.created)}</span><br>
+      <span style="font-size:13px">${escapeHtml(n.content)}</span></div>
       <button class="btn btn-sm btn-outline" onclick="deleteNote('${escapeAttr(n.id)}')" aria-label="Notiz löschen">X</button>
     </div>`
   ).join('') || '<p style="color:var(--text-dim);font-size:13px">Keine Notizen</p>';
@@ -3458,7 +3469,7 @@ async function doAuth() {
 async function loadQrCode() {
   const r = await api('serverip');
   const ip = r.ip || window.location.hostname;
-  const port = window.location.port || '8000';
+  const port = window.location.port || '8080';
   const url = 'http://' + ip + ':' + port;
   document.getElementById('qr-url').textContent = url;
   const qrEl = document.getElementById('qr-image');
@@ -3470,8 +3481,10 @@ async function loadQrCode() {
 async function exportAll() {
   toast('Erstelle Export...', 'info');
   try {
+    const token = localStorage.getItem('authToken');
+    const url = '/api/export/all' + (token ? '?token=' + encodeURIComponent(token) : '');
     const a = document.createElement('a');
-    a.href = '/api/export/all';
+    a.href = url;
     a.download = 'flowbit_export_' + new Date().toISOString().slice(0,10) + '.zip';
     a.click();
   } catch(e) { toast('Export fehlgeschlagen: ' + e.message, 'error'); }

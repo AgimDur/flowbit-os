@@ -21,7 +21,9 @@ import base64
 import fcntl
 import shutil
 import secrets
-# hashlib and urllib.request imported at top
+import hashlib
+import urllib.request
+from collections import deque
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -68,11 +70,11 @@ MAX_WOL_HISTORY = 500
 MAX_SESSION_LOG = 500
 
 # In-memory WOL history
-wol_history = []
+wol_history = deque(maxlen=500)
 wol_history_lock = threading.Lock()
 
 # Session log
-session_log = []
+session_log = deque(maxlen=500)
 session_log_lock = threading.Lock()
 
 
@@ -85,8 +87,6 @@ def log_action(action, details="", source_ip=""):
             "details": details,
             "source_ip": source_ip
         })
-        while len(session_log) > MAX_SESSION_LOG:
-            session_log.pop(0)
 
 
 def get_save_path():
@@ -454,7 +454,10 @@ def verify_wipe(device, method):
                 data = result.stdout
                 if not data:
                     continue
-                if method in ("zero", "dod"):
+                if method == "random":
+                    # Random wipe: can't deterministically verify
+                    pass
+                elif method in ("zero", "dod"):
                     if data != b'\x00' * len(data):
                         return False
             except Exception:
@@ -1266,8 +1269,6 @@ def send_wol(mac, ip=None):
         entry = {"mac": mac, "ip": broadcast_ip, "time": time.strftime('%Y-%m-%d %H:%M:%S')}
         with wol_history_lock:
             wol_history.append(entry)
-            while len(wol_history) > MAX_WOL_HISTORY:
-                wol_history.pop(0)
 
         return {"success": True, "mac": mac, "broadcast": broadcast_ip}
     except Exception as e:
@@ -3272,6 +3273,23 @@ def full_hwtest_thread(tid):
         finish_task(tid, 1)
 
 
+
+# Auth rate limiting
+_auth_attempts = {}
+
+def _check_auth_rate(ip):
+    now = time.time()
+    # Clean old entries
+    _auth_attempts.update({k: v for k, v in _auth_attempts.items() if now - v[-1] < 300})
+    attempts = _auth_attempts.get(ip, [])
+    attempts = [t for t in attempts if now - t < 300]  # Last 5 minutes
+    if len(attempts) >= 10:
+        return False
+    attempts.append(now)
+    _auth_attempts[ip] = attempts
+    return True
+
+
 # ---- HTTP Handler ----
 
 class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
@@ -3285,7 +3303,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
     def _check_auth(self):
         """Check auth token."""
         path = urlparse(self.path).path
-        if not path.startswith("/api/") or path == "/api/auth/verify":
+        if not path.startswith("/api/") or path in ("/api/auth/verify", "/api/auth"):
             return True
         token = self.headers.get("X-Auth-Token", "")
         cookies = self.headers.get("Cookie", "")
@@ -3511,6 +3529,9 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"success": False, "error": "Nicht autorisiert"}, 401)
             return
         content_length = safe_int(self.headers.get("Content-Length", 0))
+        if content_length > 10 * 1024 * 1024:  # 10 MB max
+            self.send_json({"error": "Request too large"}, 413)
+            return
         body = self.rfile.read(content_length).decode() if content_length else ""
         try:
             data = json.loads(body) if body else {}
@@ -3522,7 +3543,10 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         source_ip = self.client_address[0] if self.client_address else ""
 
         # ---- Auth ----
-        if path == "/api/auth/verify":
+        if path == "/api/auth" or path == "/api/auth/verify":
+            if not _check_auth_rate(source_ip):
+                self.send_json({"success": False, "error": "Zu viele Versuche. Bitte warten."}, 429)
+                return
             pin = data.get("pin", "")
             if pin == AUTH_TOKEN:
                 self.send_response(200)
@@ -3530,12 +3554,12 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Set-Cookie", f"flowbit_auth={AUTH_TOKEN}; Path=/; HttpOnly; SameSite=Strict")
                 self.end_headers()
                 try:
-                    self.wfile.write(json.dumps({"success": True}).encode())
+                    self.wfile.write(json.dumps({"success": True, "token": AUTH_TOKEN}).encode())
                 except BrokenPipeError:
                     pass
                 return
             else:
-                self.send_json({"success": False, "error": "Falscher PIN"}, 401)
+                self.send_json({"success": False, "error": "Ungültiger PIN"}, 401)
                 return
 
         # ---- Task Cancel ----
@@ -4217,6 +4241,40 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             threading.Thread(target=flash_update, args=(task_id, iso_path, device), daemon=True).start()
             self.send_json({"task_id": task_id})
 
+        # ---- Export All ----
+        elif path == "/api/export/all":
+            import zipfile as _zipfile
+            import io as _io
+            buf = _io.BytesIO()
+            with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:
+                # Sysinfo
+                try:
+                    info = get_system_info()
+                    zf.writestr("sysinfo.json", json.dumps(info, indent=2))
+                except Exception:
+                    pass
+                # SMART
+                try:
+                    smart = get_smart_dashboard()
+                    zf.writestr("smart.json", json.dumps(smart, indent=2))
+                except Exception:
+                    pass
+                # Session log
+                with session_log_lock:
+                    zf.writestr("session_log.json", json.dumps(list(session_log), indent=2))
+                # Version
+                zf.writestr("version.txt", f"flowbit OS {FLOWBIT_VERSION}")
+            buf.seek(0)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/zip")
+            self.send_header("Content-Disposition", "attachment; filename=flowbit-export.zip")
+            self.send_header("Content-Length", str(len(buf.getvalue())))
+            self.end_headers()
+            try:
+                self.wfile.write(buf.getvalue())
+            except BrokenPipeError:
+                pass
+
         else:
             self.send_json({"error": "Unknown endpoint"}, 404)
 
@@ -4234,6 +4292,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         try:
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com")
             self.end_headers()
             self.wfile.write(json.dumps(data).encode())
         except BrokenPipeError:
@@ -4249,6 +4308,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             elif filename.endswith(".js"):
                 ct = "application/javascript"
             self.send_header("Content-Type", f"{ct}; charset=utf-8")
+            self.send_header("Content-Security-Policy", "default-src 'self' 'unsafe-inline' 'unsafe-eval'; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com https://fonts.googleapis.com")
             self.end_headers()
             try:
                 self.wfile.write(filepath.read_bytes())
