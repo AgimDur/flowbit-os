@@ -1893,10 +1893,6 @@ async function api(path, data) {
       method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(data)
     } : {};
     // Auth deaktiviert
-    if (token) {
-      opts.headers = opts.headers || {};
-      opts.headers['X-Auth-Token'] = token;
-    }
     const res = await fetch('/api/' + path, opts);
     if (!res.ok) {
       const err = await res.text();
