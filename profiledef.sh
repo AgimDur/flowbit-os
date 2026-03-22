@@ -26,5 +26,6 @@ file_permissions=(
   ["/opt/kit/modules/common.sh"]="0:0:755"
   ["/usr/local/bin/kit-automount.sh"]="0:0:755"
   ["/usr/local/bin/kit-usb-mount.sh"]="0:0:755"
+  ["/opt/kit/webui/server.py"]="0:0:755"
   ["/opt/kit/boot.sh"]="0:0:755"
 )

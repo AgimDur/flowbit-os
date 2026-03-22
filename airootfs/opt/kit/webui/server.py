@@ -20,6 +20,7 @@ import zipfile
 import base64
 import fcntl
 import shutil
+import ipaddress
 import secrets
 import hashlib
 import urllib.request
@@ -30,7 +31,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 PORT = 8080
 UPDATE_SERVER = "https://update.flowbit.ch"
-FLOWBIT_VERSION = "5.0.0"
+FLOWBIT_VERSION = "6.0.0"
 try:
     FLOWBIT_VERSION = Path("/etc/flowbit-release").read_text().strip()
 except Exception:
@@ -76,6 +77,44 @@ wol_history_lock = threading.Lock()
 # Session log
 session_log = deque(maxlen=500)
 session_log_lock = threading.Lock()
+
+
+# Audit log for destructive operations
+AUDIT_LOG_FILE = os.path.join(PERSIST_BASE, "audit_log.json")
+audit_log = deque(maxlen=1000)
+audit_log_lock = threading.Lock()
+
+# Load existing audit log
+try:
+    with open(AUDIT_LOG_FILE, "r") as _f:
+        audit_log.extend(json.load(_f))
+except Exception:
+    pass
+
+# Request counter for metrics
+request_counter = {"total": 0, "get": 0, "post": 0}
+request_counter_lock = threading.Lock()
+
+
+def audit_record(action, details="", source_ip="", user="system"):
+    """Record a destructive operation to the audit log."""
+    entry = {
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "epoch": time.time(),
+        "action": action,
+        "details": details,
+        "source_ip": source_ip,
+        "user": user
+    }
+    with audit_log_lock:
+        audit_log.append(entry)
+        # Persist to disk
+        try:
+            with open(AUDIT_LOG_FILE, "w") as f:
+                json.dump(list(audit_log), f)
+        except Exception:
+            pass
+    return entry
 
 
 def log_action(action, details="", source_ip=""):
@@ -3292,6 +3331,385 @@ def _check_auth_rate(ip):
 
 # ---- HTTP Handler ----
 
+
+# ---- TPM Management (A06) ----
+
+def get_tpm_status():
+    """Read TPM info via tpm2-tools."""
+    result = {"available": False}
+    try:
+        r = run_cmd("tpm2_getcap properties-fixed 2>/dev/null", timeout=5, default="")
+        if r and "TPM2_PT" in r:
+            result["available"] = True
+            result["manufacturer"] = ""
+            result["version"] = ""
+            for line in r.split("\n"):
+                if "TPM2_PT_MANUFACTURER" in line:
+                    result["manufacturer"] = line.split(":")[-1].strip() if ":" in line else ""
+                if "TPM2_PT_FIRMWARE_VERSION" in line:
+                    result["version"] = line.split(":")[-1].strip() if ":" in line else ""
+            pcr = run_cmd("tpm2_pcrread sha256 2>/dev/null", timeout=5, default="")
+            result["pcr_values"] = pcr if pcr else ""
+        else:
+            r2 = run_cmd("ls /dev/tpm* 2>/dev/null", timeout=2, default="")
+            result["device_exists"] = bool(r2)
+    except Exception:
+        pass
+    return result
+
+
+def tpm_clear():
+    """Clear TPM (dangerous!)."""
+    r = run_cmd("tpm2_clear 2>&1", timeout=10, default="")
+    return {"success": "error" not in r.lower() if r else False, "output": r}
+
+
+# ---- Network Cable Tester (A10) ----
+
+def network_cable_test(interface, target=None):
+    """Test network cable/interface quality."""
+    result = {"interface": interface}
+    safe_iface = shlex.quote(interface)
+    eth = run_cmd(f"ethtool {safe_iface} 2>/dev/null", timeout=5, default="")
+    if eth:
+        for line in eth.split("\n"):
+            line = line.strip()
+            if "Speed:" in line:
+                result["speed"] = line.split(":")[-1].strip()
+            if "Duplex:" in line:
+                result["duplex"] = line.split(":")[-1].strip()
+            if "Link detected:" in line:
+                result["link"] = "yes" in line.lower()
+            if "Auto-negotiation:" in line:
+                result["autoneg"] = "on" in line.lower()
+    stats = run_cmd(f"ethtool -S {safe_iface} 2>/dev/null | head -30", timeout=5, default="")
+    errors = {}
+    if stats:
+        for line in stats.split("\n"):
+            line = line.strip()
+            if any(k in line.lower() for k in ["error", "drop", "crc", "collision"]):
+                parts = line.split(":")
+                if len(parts) == 2:
+                    errors[parts[0].strip()] = parts[1].strip()
+    result["errors"] = errors
+    if target:
+        iperf = run_cmd(f"iperf3 -c {shlex.quote(target)} -t 5 -J 2>/dev/null", timeout=15, default="")
+        if iperf:
+            try:
+                iperf_data = json.loads(iperf)
+                result["throughput_mbps"] = round(
+                    iperf_data.get("end", {}).get("sum_received", {}).get("bits_per_second", 0) / 1e6, 2
+                )
+            except Exception:
+                pass
+    return result
+
+
+# ---- Windows 11 Compatibility Checker (A13) ----
+
+def check_win11_compatibility():
+    """Check if hardware meets Windows 11 requirements."""
+    checks = {}
+    # CPU: 1 GHz, 2+ cores, 64-bit
+    cpu_info = run_cmd("lscpu 2>/dev/null", timeout=3, default="")
+    cores = 0
+    freq = 0
+    arch = ""
+    if cpu_info:
+        for line in cpu_info.split("\n"):
+            if "CPU(s):" in line and "NUMA" not in line and "On-line" not in line:
+                try:
+                    cores = int(line.split(":")[-1].strip())
+                except Exception:
+                    pass
+            if "CPU max MHz" in line or "CPU MHz" in line:
+                try:
+                    freq = float(line.split(":")[-1].strip())
+                except Exception:
+                    pass
+            if "Architecture" in line:
+                arch = line.split(":")[-1].strip()
+    checks["cpu"] = {
+        "pass": cores >= 2 and freq >= 1000 and "64" in arch,
+        "cores": cores, "freq_mhz": freq, "arch": arch
+    }
+    # RAM: 4 GB minimum
+    mem = run_cmd("free -m 2>/dev/null | grep Mem", timeout=2, default="")
+    ram_mb = 0
+    if mem:
+        try:
+            ram_mb = int(mem.split()[1])
+        except Exception:
+            pass
+    checks["ram"] = {"pass": ram_mb >= 4096, "total_mb": ram_mb}
+    # Storage: 64 GB minimum
+    disk_out = run_cmd("lsblk -d -b -n -o SIZE 2>/dev/null | sort -rn | head -1", timeout=3, default="0")
+    try:
+        largest_disk_gb = int(disk_out) / (1024**3)
+    except Exception:
+        largest_disk_gb = 0
+    checks["storage"] = {"pass": largest_disk_gb >= 64, "largest_disk_gb": round(largest_disk_gb, 1)}
+    # TPM 2.0
+    tpm = run_cmd("tpm2_getcap properties-fixed 2>/dev/null", timeout=3, default="")
+    checks["tpm"] = {"pass": bool(tpm and "TPM2_PT" in tpm)}
+    # Secure Boot capable
+    sb = run_cmd("mokutil --sb-state 2>/dev/null || efivar -l 2>/dev/null | grep SecureBoot", timeout=3, default="")
+    checks["secure_boot"] = {"pass": bool(sb)}
+    # UEFI
+    checks["uefi"] = {"pass": os.path.isdir("/sys/firmware/efi")}
+    # Overall
+    checks["compatible"] = all(
+        c["pass"] for c in checks.values() if isinstance(c, dict) and "pass" in c
+    )
+    return checks
+
+
+# ---- Disk Benchmark (A08) ----
+
+def parse_benchmark_result(output, test_type):
+    """Parse benchmark output from dd or fio."""
+    result = {"raw": output or ""}
+    if not output:
+        return result
+    if test_type in ("seq_read", "seq_write"):
+        # Parse dd output: "268435456 bytes (256 MB, 244 MiB) copied, 0.523423 s, 489 MB/s"
+        m = re.search(r'([\d.]+)\s+(GB|MB|kB)/s', output)
+        if m:
+            val = float(m.group(1))
+            unit = m.group(2)
+            if unit == "GB":
+                val *= 1000
+            elif unit == "kB":
+                val /= 1000
+            result["speed_mbps"] = round(val, 2)
+        m2 = re.search(r'copied,\s+([\d.]+)\s+s', output)
+        if m2:
+            result["time_sec"] = round(float(m2.group(1)), 3)
+    elif test_type in ("rand_read", "rand_write"):
+        # Parse fio JSON output
+        try:
+            fio_data = json.loads(output)
+            jobs = fio_data.get("jobs", [{}])
+            if jobs:
+                job = jobs[0]
+                rw_key = "read" if "read" in test_type else "write"
+                bw_bytes = job.get(rw_key, {}).get("bw_bytes", 0)
+                iops = job.get(rw_key, {}).get("iops", 0)
+                lat_ns = job.get(rw_key, {}).get("lat_ns", {}).get("mean", 0)
+                result["speed_mbps"] = round(bw_bytes / 1e6, 2)
+                result["iops"] = round(iops, 0)
+                result["latency_us"] = round(lat_ns / 1000, 2)
+        except Exception:
+            pass
+    return result
+
+
+def disk_benchmark_thread(tid, disk, test="all"):
+    """Run disk benchmark in background thread."""
+    results = {}
+    safe_disk = sanitize_device(disk)
+    test_file = f"/tmp/flowbit-bench-{safe_disk}"
+    tests = ["seq_write", "seq_read", "rand_read", "rand_write"] if test == "all" else [test]
+    try:
+        for t in tests:
+            update_task(tid, status="running", current_test=t)
+            if t == "seq_write":
+                r = run_cmd(f"dd if=/dev/zero of={test_file} bs=1M count=256 conv=fdatasync 2>&1", timeout=60, default="")
+            elif t == "seq_read":
+                run_cmd("sync && echo 3 > /proc/sys/vm/drop_caches", timeout=5)
+                r = run_cmd(f"dd if={test_file} of=/dev/null bs=1M 2>&1", timeout=60, default="")
+            elif t == "rand_read":
+                # Create test file if not exists
+                if not os.path.exists(test_file):
+                    run_cmd(f"dd if=/dev/zero of={test_file} bs=1M count=64 2>/dev/null", timeout=30)
+                r = run_cmd(
+                    f"fio --name=randread --ioengine=libaio --rw=randread --bs=4k "
+                    f"--numjobs=1 --size=64M --runtime=10 --filename={test_file} --output-format=json 2>/dev/null",
+                    timeout=30, default=""
+                )
+            elif t == "rand_write":
+                r = run_cmd(
+                    f"fio --name=randwrite --ioengine=libaio --rw=randwrite --bs=4k "
+                    f"--numjobs=1 --size=64M --runtime=10 --filename={test_file} --output-format=json 2>/dev/null",
+                    timeout=30, default=""
+                )
+            else:
+                r = ""
+            results[t] = parse_benchmark_result(r, t)
+        run_cmd(f"rm -f {test_file}", timeout=5)
+        finish_task(tid)
+        update_task(tid, results=results)
+    except Exception as e:
+        run_cmd(f"rm -f {test_file}", timeout=5)
+        finish_task(tid, exit_code=1)
+        update_task(tid, error=str(e), results=results)
+
+
+# ---- IP Calculator ----
+
+def ip_calculator(cidr):
+    """Calculate IP network details from CIDR notation."""
+    try:
+        net = ipaddress.ip_network(cidr, strict=False)
+        hosts = list(net.hosts())
+        return {
+            "network": str(net.network_address),
+            "broadcast": str(net.broadcast_address),
+            "netmask": str(net.netmask),
+            "wildcard": str(net.hostmask),
+            "prefix": net.prefixlen,
+            "hosts": net.num_addresses - 2 if net.prefixlen < 31 else net.num_addresses,
+            "first_host": str(hosts[0]) if hosts else str(net.network_address),
+            "last_host": str(hosts[-1]) if hosts else str(net.broadcast_address),
+            "is_private": net.is_private,
+            "class": "A" if net.network_address.packed[0] < 128 else "B" if net.network_address.packed[0] < 192 else "C",
+        }
+    except ValueError as e:
+        return {"error": str(e)}
+
+
+# ---- Health Check & Metrics (C09, C10) ----
+
+def get_health():
+    """Return server health status."""
+    uptime_sec = time.time() - SERVER_START
+    mem = run_cmd("free -m | grep Mem", timeout=2, default="")
+    mem_total = 0
+    mem_used = 0
+    if mem:
+        parts = mem.split()
+        try:
+            mem_total = int(parts[1])
+            mem_used = int(parts[2])
+        except Exception:
+            pass
+    with tasks_lock:
+        running_tasks = sum(1 for t in tasks.values() if t.get("status") == "running")
+        total_tasks = len(tasks)
+    with request_counter_lock:
+        req = dict(request_counter)
+    return {
+        "status": "healthy",
+        "version": FLOWBIT_VERSION,
+        "uptime_seconds": round(uptime_sec, 1),
+        "uptime_human": f"{int(uptime_sec // 3600)}h {int((uptime_sec % 3600) // 60)}m",
+        "memory": {"total_mb": mem_total, "used_mb": mem_used, "percent": round(mem_used / mem_total * 100, 1) if mem_total else 0},
+        "tasks": {"running": running_tasks, "total": total_tasks},
+        "requests": req,
+    }
+
+
+def get_metrics():
+    """Return Prometheus-style metrics."""
+    uptime_sec = time.time() - SERVER_START
+    mem = run_cmd("free -b | grep Mem", timeout=2, default="")
+    mem_total = 0
+    mem_used = 0
+    if mem:
+        parts = mem.split()
+        try:
+            mem_total = int(parts[1])
+            mem_used = int(parts[2])
+        except Exception:
+            pass
+    with tasks_lock:
+        running_tasks = sum(1 for t in tasks.values() if t.get("status") == "running")
+        total_tasks = len(tasks)
+    with request_counter_lock:
+        req = dict(request_counter)
+    cpu_load = run_cmd("cat /proc/loadavg", timeout=2, default="0 0 0")
+    loads = cpu_load.split()
+    lines = [
+        f"# HELP flowbit_uptime_seconds Server uptime in seconds",
+        f"flowbit_uptime_seconds {round(uptime_sec, 1)}",
+        f"# HELP flowbit_memory_bytes Memory usage",
+        f'flowbit_memory_bytes{{type="total"}} {mem_total}',
+        f'flowbit_memory_bytes{{type="used"}} {mem_used}',
+        f"# HELP flowbit_tasks Task counts",
+        f'flowbit_tasks{{status="running"}} {running_tasks}',
+        f'flowbit_tasks{{status="total"}} {total_tasks}',
+        f"# HELP flowbit_requests_total HTTP request counts",
+        f'flowbit_requests_total{{method="GET"}} {req.get("get", 0)}',
+        f'flowbit_requests_total{{method="POST"}} {req.get("post", 0)}',
+        f"# HELP flowbit_load System load averages",
+        f'flowbit_load{{period="1m"}} {loads[0] if loads else 0}',
+        f'flowbit_load{{period="5m"}} {loads[1] if len(loads) > 1 else 0}',
+        f'flowbit_load{{period="15m"}} {loads[2] if len(loads) > 2 else 0}',
+    ]
+    return "\n".join(lines)
+
+
+# ---- USB Device Manager (A07) ----
+
+def get_usb_devices():
+    """List USB devices with details."""
+    devices = []
+    try:
+        lsusb = run_cmd("lsusb 2>/dev/null", timeout=5, default="")
+        if lsusb:
+            for line in lsusb.split("\n"):
+                if not line.strip():
+                    continue
+                # Bus 001 Device 002: ID 1234:5678 Some Device Name
+                m = re.match(r'Bus (\d+) Device (\d+): ID ([0-9a-f:]+)\s*(.*)', line)
+                if m:
+                    devices.append({
+                        "bus": m.group(1),
+                        "device": m.group(2),
+                        "id": m.group(3),
+                        "name": m.group(4).strip(),
+                        "path": f"/dev/bus/usb/{m.group(1)}/{m.group(2)}"
+                    })
+        # Add block device info for USB storage
+        usb_blocks = run_cmd("lsblk -d -J -o NAME,SIZE,RM,TRAN,MODEL 2>/dev/null", timeout=5, default="")
+        if usb_blocks:
+            try:
+                blk_data = json.loads(usb_blocks)
+                for dev in blk_data.get("blockdevices", []):
+                    if dev.get("rm") and dev.get("tran") == "usb":
+                        # Find matching device in list or add
+                        found = False
+                        for d in devices:
+                            if dev.get("model") and dev["model"].strip() in d.get("name", ""):
+                                d["block_device"] = f"/dev/{dev['name']}"
+                                d["size"] = dev.get("size", "")
+                                d["removable"] = True
+                                found = True
+                                break
+                        if not found:
+                            devices.append({
+                                "bus": "", "device": "",
+                                "id": "",
+                                "name": dev.get("model", "USB Storage").strip(),
+                                "block_device": f"/dev/{dev['name']}",
+                                "size": dev.get("size", ""),
+                                "removable": True
+                            })
+            except Exception:
+                pass
+    except Exception:
+        pass
+    return devices
+
+
+def eject_usb_device(device):
+    """Safely eject a USB device."""
+    safe_dev = sanitize_device(device)
+    if not safe_dev:
+        return {"success": False, "error": "Ungültiges Gerät"}
+    # Unmount all partitions first
+    run_cmd(f"umount /dev/{safe_dev}* 2>/dev/null", timeout=10)
+    # Eject
+    r = run_cmd(f"eject /dev/{safe_dev} 2>&1", timeout=10, default="")
+    success = r is not None and "error" not in r.lower() and "unable" not in r.lower()
+    if not success:
+        # Try udisksctl as fallback
+        r2 = run_cmd(f"udisksctl power-off -b /dev/{safe_dev} 2>&1", timeout=10, default="")
+        success = r2 is not None and "error" not in r2.lower()
+        r = r2 if not success else r
+    return {"success": success, "output": r}
+
+
 class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
     def __init__(self, *args, **kwargs):
@@ -3316,6 +3734,9 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
         return token == AUTH_TOKEN or cookie_token == AUTH_TOKEN
 
     def do_GET(self):
+        with request_counter_lock:
+            request_counter["total"] += 1
+            request_counter["get"] += 1
         if not self._check_auth():
             self.send_json({"success": False, "error": "Nicht autorisiert"}, 401)
             return
@@ -3521,10 +3942,47 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             else:
                 self.send_json({"error": "Checkliste nicht gefunden"}, 404)
 
+
+        # ---- TPM Management (A06) ----
+        elif path == "/api/tpm/status":
+            self.send_json(get_tpm_status())
+
+        # ---- Windows 11 Compatibility (A13) ----
+        elif path == "/api/win11check":
+            self.send_json(check_win11_compatibility())
+
+        # ---- Health Check (C09) ----
+        elif path == "/api/health":
+            self.send_json(get_health())
+
+        # ---- Metrics (C10) ----
+        elif path == "/api/metrics":
+            metrics_text = get_metrics()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            try:
+                self.wfile.write(metrics_text.encode())
+            except BrokenPipeError:
+                pass
+            return
+
+        # ---- USB Device Manager (A07) ----
+        elif path == "/api/usb/devices":
+            self.send_json({"devices": get_usb_devices()})
+
+        # ---- Audit Log (D03) ----
+        elif path == "/api/audit":
+            with audit_log_lock:
+                self.send_json({"entries": list(audit_log)})
+
         else:
             super().do_GET()
 
     def do_POST(self):
+        with request_counter_lock:
+            request_counter["total"] += 1
+            request_counter["post"] += 1
         if not self._check_auth():
             self.send_json({"success": False, "error": "Nicht autorisiert"}, 401)
             return
@@ -3639,6 +4097,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
 
         # ---- Wiper ----
         elif path == "/api/wiper/wipe":
+            audit_record("disk_wipe", f"device={data.get('device','')}, method={data.get('method','')}", source_ip)
             device = data.get("device", "")
             method = data.get("method", "zero")
             passes = safe_int(data.get("passes", 1), 1)
@@ -3652,6 +4111,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"task_id": tid})
 
         elif path == "/api/wiper/secure-erase":
+            audit_record("secure_erase", f"device={data.get('device','')}", source_ip)
             device = data.get("device", "")
             if not device:
                 self.send_json({"error": "Kein Device angegeben"}, 400)
@@ -3751,6 +4211,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"task_id": tid})
 
         elif path == "/api/backup/clone":
+            audit_record("disk_clone", f"source={data.get('source','')}, target={data.get('target','')}", source_ip)
             source = data.get("source", "")
             target = data.get("target", "")
             if not source or not target:
@@ -3830,6 +4291,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json(list_windows_users(partition))
 
         elif path == "/api/passreset/reset":
+            audit_record("password_reset", f"user={data.get('user','')}", source_ip)
             partition = data.get("partition", "")
             username = data.get("username", "")
             if not partition or not username:
@@ -4024,6 +4486,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"task_id": tid})
 
         elif path == "/api/partmgr/delete":
+            audit_record("partition_delete", f"partition={data.get('partition','')}", source_ip)
             device = data.get("device", "")
             partnum = data.get("partnum", "")
             if not device or not partnum:
@@ -4045,6 +4508,7 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"task_id": tid})
 
         elif path == "/api/partmgr/format":
+            audit_record("partition_format", f"partition={data.get('partition','')}, fstype={data.get('fstype','')}", source_ip)
             partition = data.get("partition", "")
             fstype = data.get("fstype", "")
             label = data.get("label", "")
@@ -4274,6 +4738,69 @@ class ITToolsHandler(http.server.SimpleHTTPRequestHandler):
                 self.wfile.write(buf.getvalue())
             except BrokenPipeError:
                 pass
+
+
+        # ---- TPM Clear (A06) ----
+        elif path == "/api/tpm/clear":
+            audit_record("tpm_clear", "TPM clear requested", source_ip)
+            log_action("TPM Clear", "", source_ip)
+            self.send_json(tpm_clear())
+
+        # ---- Network Cable Tester (A10) ----
+        elif path == "/api/nettest":
+            interface = data.get("interface", "")
+            if not interface:
+                self.send_json({"error": "Interface erforderlich"}, 400)
+            else:
+                target = data.get("target")
+                self.send_json(network_cable_test(interface, target))
+
+        # ---- Disk Benchmark (A08) ----
+        elif path == "/api/benchmark":
+            disk = data.get("disk", "")
+            test = data.get("test", "all")
+            if not disk:
+                self.send_json({"error": "Disk erforderlich"}, 400)
+            else:
+                safe_disk = sanitize_device(disk)
+                if not safe_disk:
+                    self.send_json({"error": "Ungültiges Gerät"}, 400)
+                else:
+                    task_id = new_task(f"Benchmark {safe_disk}")
+                    log_action("Disk Benchmark", f"disk={safe_disk} test={test}", source_ip)
+                    threading.Thread(
+                        target=disk_benchmark_thread, args=(task_id, safe_disk, test), daemon=True
+                    ).start()
+                    self.send_json({"task_id": task_id})
+
+        # ---- IP Calculator ----
+        elif path == "/api/ipcalc":
+            ip_input = data.get("ip", "")
+            if not ip_input:
+                self.send_json({"error": "IP/CIDR erforderlich"}, 400)
+            else:
+                self.send_json(ip_calculator(ip_input))
+
+        # ---- USB Eject (A07) ----
+        elif path == "/api/usb/eject":
+            device = data.get("device", "")
+            if not device:
+                self.send_json({"error": "Gerät erforderlich"}, 400)
+            else:
+                audit_record("usb_eject", f"device={device}", source_ip)
+                log_action("USB Eject", f"device={device}", source_ip)
+                self.send_json(eject_usb_device(device))
+
+        # ---- Audit Log Clear (D03) ----
+        elif path == "/api/audit/clear":
+            with audit_log_lock:
+                audit_log.clear()
+                try:
+                    with open(AUDIT_LOG_FILE, "w") as f:
+                        json.dump([], f)
+                except Exception:
+                    pass
+            self.send_json({"success": True})
 
         else:
             self.send_json({"error": "Unknown endpoint"}, 404)
